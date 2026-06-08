@@ -1,0 +1,87 @@
+---
+/**
+ * Retro-arcade "menu select" button. Renders an `<a>` when `href` is given,
+ * otherwise a `<button>`. Static hover/focus states only here — Framer
+ * Motion press/select micro-interactions land in the motion pass (PRD §9).
+ */
+export interface Props {
+  href?: string;
+  variant?: 'primary' | 'secondary' | 'ghost';
+  type?: 'button' | 'submit';
+  /** Forwarded when `href` is set, e.g. for external links */
+  target?: string;
+  rel?: string;
+}
+
+const { href, variant = 'primary', type = 'button', target, rel } = Astro.props;
+
+const className = `button button--${variant}`;
+---
+
+{
+  href ? (
+    <a class={className} href={href} target={target} rel={rel}>
+      <slot />
+    </a>
+  ) : (
+    <button class={className} type={type}>
+      <slot />
+    </button>
+  )
+}
+
+<style>
+  .button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-2);
+    padding: var(--space-3) var(--space-5);
+    border: var(--border-width) solid currentColor;
+    border-radius: var(--radius-md);
+    background-color: transparent;
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-bold);
+    letter-spacing: var(--tracking-widest);
+    text-transform: uppercase;
+    text-decoration: none;
+    line-height: 1;
+    cursor: pointer;
+    transition:
+      color 0.15s ease-out,
+      background-color 0.15s ease-out,
+      box-shadow 0.15s ease-out;
+  }
+
+  .button--primary {
+    color: var(--color-green);
+    box-shadow: var(--glow-green-soft);
+  }
+
+  .button--primary:hover {
+    background-color: var(--color-green);
+    color: var(--color-bg);
+    box-shadow: var(--glow-green);
+  }
+
+  .button--secondary {
+    color: var(--color-amber);
+  }
+
+  .button--secondary:hover {
+    background-color: var(--color-amber);
+    color: var(--color-bg);
+    box-shadow: var(--glow-amber);
+  }
+
+  .button--ghost {
+    color: var(--color-fg);
+    border-color: var(--color-border);
+  }
+
+  .button--ghost:hover {
+    color: var(--color-green);
+    border-color: currentColor;
+  }
+</style>

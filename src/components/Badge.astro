@@ -1,0 +1,46 @@
+---
+/**
+ * Small pixel-labeled chip for status/tags — "NEW", "FREE", "TBD", "LIVE".
+ * Uses the pixel face, so keep contents short: it's illegible at length.
+ */
+export interface Props {
+  variant?: 'green' | 'amber' | 'magenta';
+}
+
+const { variant = 'green' } = Astro.props;
+---
+
+<span class={`badge badge--${variant}`}>
+  <slot />
+</span>
+
+<style>
+  .badge {
+    display: inline-flex;
+    align-items: center;
+    padding: var(--space-1) var(--space-2);
+    border: var(--border-width) solid currentColor;
+    border-radius: var(--radius-sm);
+    font-family: var(--font-pixel);
+    font-size: var(--text-xs);
+    letter-spacing: var(--tracking-wide);
+    text-transform: uppercase;
+    line-height: 1.4;
+    white-space: nowrap;
+  }
+
+  .badge--green {
+    color: var(--color-green);
+    box-shadow: var(--glow-green-soft);
+  }
+
+  .badge--amber {
+    color: var(--color-amber);
+    box-shadow: var(--glow-amber);
+  }
+
+  .badge--magenta {
+    color: var(--color-magenta);
+    box-shadow: var(--glow-magenta);
+  }
+</style>

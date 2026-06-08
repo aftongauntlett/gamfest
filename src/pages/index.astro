@@ -1,17 +1,113 @@
 ---
-
+import Layout from '../layouts/Layout.astro';
+import Section from '../components/Section.astro';
+import Button from '../components/Button.astro';
+import Badge from '../components/Badge.astro';
 ---
 
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="icon" href="/favicon.ico" />
-    <meta name="viewport" content="width=device-width" />
-    <meta name="generator" content={Astro.generator} />
-    <title>Astro</title>
-  </head>
-  <body>
-    <h1>Astro</h1>
-  </body>
-</html>
+<Layout
+  title="GAM[fest] — Games | Art | Music | Fest"
+  description="GAM[fest] is a Baltimore festival celebrating games, art, and music — built around playing classic videogames live on a giant LED billboard."
+>
+  <main id="main">
+    <header class="hero">
+      <p class="hero__tagline">Games | Art | Music | Fest</p>
+      <h1 class="hero__wordmark">
+        GAM<span class="hero__wordmark-accent">[fest]</span>
+      </h1>
+      <p class="hero__pitch">
+        That happened. It ruled. <strong>NEXT GAM[fest]: TBD — 2027</strong>
+      </p>
+      <div class="hero__badges">
+        <Badge variant="green">Free</Badge>
+        <Badge variant="amber">IRL</Badge>
+        <Badge variant="magenta">TBD 2027</Badge>
+      </div>
+      <div class="hero__actions">
+        <Button href="https://discord.gg/KJw4trPeg" variant="primary">
+          Follow on Discord
+        </Button>
+        <Button href="https://fb.me/1TyB3AQ3p7hPRuE" variant="secondary">
+          Follow on Facebook
+        </Button>
+      </div>
+    </header>
+
+    <Section id="recap" eyebrow="Level 01 // Recap" title="How it went">
+      <p class="lede">
+        Somebody gave the nerds a video cable hooked up to a giant LED
+        billboard. This is going to get nuts — and it did, in the best way.
+      </p>
+      <p>
+        GAM[fest] #1 took over a corner of Baltimore's Charles Street Promenade
+        with free-play on a five-story screen, live music following along to a
+        Zelda 1 speedrun, tabletop demos, and an hourly stream of nerd trivia. <a
+          href="#gallery">See the gallery</a
+        > for the highlights.
+      </p>
+    </Section>
+  </main>
+</Layout>
+
+<style>
+  .hero {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--space-4);
+    max-width: var(--content-max-width);
+    margin-inline: auto;
+    padding-block: var(--space-9);
+    padding-inline: var(--content-padding-inline);
+  }
+
+  .hero__tagline {
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-bold);
+    letter-spacing: var(--tracking-widest);
+    text-transform: uppercase;
+    color: var(--color-green-text);
+  }
+
+  .hero__wordmark {
+    font-size: var(--text-3xl);
+    line-height: var(--leading-tight);
+  }
+
+  .hero__wordmark-accent {
+    color: var(--color-bg);
+    background-color: var(--color-green);
+    padding-inline: 0.15em;
+    box-shadow: var(--glow-green);
+  }
+
+  .hero__pitch {
+    max-width: 40ch;
+    font-size: var(--text-md);
+    color: var(--color-fg-muted);
+  }
+
+  .hero__pitch strong {
+    color: var(--color-fg);
+    font-weight: var(--weight-bold);
+  }
+
+  .hero__badges,
+  .hero__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+  }
+
+  .lede {
+    font-size: var(--text-md);
+    color: var(--color-fg);
+  }
+
+  @media (min-width: 48rem) {
+    .hero__wordmark {
+      font-size: var(--text-4xl);
+    }
+  }
+</style>

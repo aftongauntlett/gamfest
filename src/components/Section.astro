@@ -1,0 +1,71 @@
+---
+/**
+ * Layout primitive for a top-level page section ("level"). Handles the
+ * anchored nav target, consistent max-width/padding, and the optional
+ * "LEVEL 01" style eyebrow + heading — so individual sections only need to
+ * supply their content.
+ */
+export interface Props {
+  id: string;
+  eyebrow?: string;
+  title?: string;
+  /** Heading level for `title` — defaults to `h2` (sections sit under the hero's `h1`) */
+  headingLevel?: 'h2' | 'h3';
+}
+
+const { id, eyebrow, title, headingLevel = 'h2' } = Astro.props;
+const Heading = headingLevel;
+---
+
+<section id={id} class="section">
+  <div class="section__inner">
+    {
+      (eyebrow || title) && (
+        <header class="section__header">
+          {eyebrow && <p class="section__eyebrow">{eyebrow}</p>}
+          {title && <Heading class="section__title">{title}</Heading>}
+        </header>
+      )
+    }
+    <div class="section__content">
+      <slot />
+    </div>
+  </div>
+</section>
+
+<style>
+  .section {
+    padding-block: var(--space-8);
+    scroll-margin-top: var(--space-7);
+  }
+
+  .section__inner {
+    max-width: var(--content-max-width);
+    margin-inline: auto;
+    padding-inline: var(--content-padding-inline);
+  }
+
+  .section__header {
+    margin-bottom: var(--space-6);
+  }
+
+  .section__eyebrow {
+    margin: 0 0 var(--space-2);
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    font-weight: var(--weight-bold);
+    letter-spacing: var(--tracking-widest);
+    text-transform: uppercase;
+    color: var(--color-green-text);
+  }
+
+  .section__title {
+    margin: 0;
+  }
+
+  @media (min-width: 64rem) {
+    .section {
+      padding-block: var(--space-9);
+    }
+  }
+</style>
