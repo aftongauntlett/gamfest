@@ -26,12 +26,14 @@
     "@types/react-dom": "^19.2.3",
     "astro": "^6.4.4",
     "framer-motion": "^12.40.0",
+    "matter-js": "^0.20.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7"
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.9",
     "@playwright/test": "^1.60.0",
+    "@types/matter-js": "^0.20.2",
     "eslint": "^9.39.4",
     "eslint-plugin-astro": "^1.7.0",
     "eslint-plugin-jsx-a11y": "^6.10.2",

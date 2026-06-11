@@ -101,6 +101,24 @@ const { name, label } = Astro.props;
       </g>
     )
   }
+  {
+    name === 'heart' && (
+      <path
+        d="M12 20.5c-.3 0-.6-.1-.8-.3C7.8 17.4 4 14 4 10.2 4 7.6 6 5.5 8.5 5.5c1.5 0 2.9.8 3.5 2 .6-1.2 2-2 3.5-2C18 5.5 20 7.6 20 10.2c0 3.8-3.8 7.2-7.2 10-.2.2-.5.3-.8.3Z"
+        fill="currentColor"
+        stroke="none"
+      />
+    )
+  }
+  {
+    name === 'arrow-up-circle' && (
+      <g>
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 16V8" />
+        <path d="M8.5 11.5 12 8l3.5 3.5" />
+      </g>
+    )
+  }
 </svg>
 
 <style>

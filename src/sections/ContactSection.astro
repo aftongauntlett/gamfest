@@ -3,6 +3,7 @@ import Section from '../components/Section.astro';
 import Reveal from '../components/motion/Reveal';
 import Button from '../components/Button.astro';
 import Icon from '../components/Icon.astro';
+import CopyButton from '../components/islands/CopyButton';
 import {
   discordUrl,
   facebookUrl,
@@ -18,79 +19,101 @@ import {
       Insert coin (or just hit follow) so you hear it first:
     </p>
   </Reveal>
-  <Reveal client:visible delay={0.12}>
-    <div class="follow-card">
-      <a class="follow-item" href={discordUrl} target="_blank" rel="noreferrer">
-        <Icon name="discord" label="Discord" />
-        <div class="follow-item__text">
-          <p class="follow-item__label">Discord</p>
-          <p class="follow-item__sub">Join the server</p>
+  <div class="contact-layout">
+    <Reveal client:visible delay={0.12} className="contact-layout__form">
+      <form class="contact-form" action={formspreeUrl} method="POST">
+        <header class="contact-form__header">
+          <h3 class="contact-form__title">Get in touch</h3>
+          <p class="contact-form__subtitle">
+            Got an idea, a question, or want to pitch an activity for next
+            time?
+          </p>
+        </header>
+        <input type="hidden" name="_subject" value="GAM[fest] contact form" />
+        <div class="contact-form__row">
+          <label for="contact-name">Name</label>
+          <input
+            id="contact-name"
+            name="name"
+            type="text"
+            autocomplete="name"
+            required
+          />
         </div>
-      </a>
-      <a
-        class="follow-item"
-        href={facebookUrl}
-        target="_blank"
-        rel="noreferrer"
-      >
-        <Icon name="facebook" label="Facebook" />
-        <div class="follow-item__text">
-          <p class="follow-item__label">Facebook</p>
-          <p class="follow-item__sub">Follow the page</p>
+        <div class="contact-form__row">
+          <label for="contact-email">Email</label>
+          <input
+            id="contact-email"
+            name="email"
+            type="email"
+            autocomplete="email"
+            required
+          />
         </div>
-      </a>
-      <a class="follow-item" href={`mailto:${contactEmail}`}>
-        <Icon name="mail" label="Email" />
-        <div class="follow-item__text">
-          <p class="follow-item__label">{contactEmail}</p>
-          <p class="follow-item__sub">Send us a message</p>
+        <div class="contact-form__row">
+          <label for="contact-message">Message</label>
+          <textarea id="contact-message" name="message" rows="4" required
+          ></textarea>
         </div>
-      </a>
-    </div>
-  </Reveal>
-  <Reveal client:visible delay={0.18}>
-    <form class="contact-form" action={formspreeUrl} method="POST">
-      <h3 class="contact-form__heading">
-        Got an idea, a question, or want to pitch an activity for next time?
-      </h3>
-      <input type="hidden" name="_subject" value="GAM[fest] contact form" />
-      <div class="contact-form__row">
-        <label for="contact-name">Name</label>
-        <input
-          id="contact-name"
-          name="name"
-          type="text"
-          autocomplete="name"
-          required
-        />
+        <Button type="submit" variant="primary">Send it</Button>
+      </form>
+    </Reveal>
+    <Reveal client:visible delay={0.18} className="contact-layout__follow">
+      <div class="follow-card">
+        <a
+          class="follow-item"
+          href={discordUrl}
+          target="_blank"
+          rel="noreferrer"
+        >
+          <Icon name="discord" label="Discord" />
+          <div class="follow-item__text">
+            <p class="follow-item__label">Discord</p>
+            <p class="follow-item__sub">Join the server</p>
+          </div>
+        </a>
+        <a
+          class="follow-item"
+          href={facebookUrl}
+          target="_blank"
+          rel="noreferrer"
+        >
+          <Icon name="facebook" label="Facebook" />
+          <div class="follow-item__text">
+            <p class="follow-item__label">Facebook</p>
+            <p class="follow-item__sub">Follow the page</p>
+          </div>
+        </a>
+        <div class="follow-item follow-item--email">
+          <Icon name="mail" label="Email" />
+          <div class="follow-item__text">
+            <a class="follow-item__label" href={`mailto:${contactEmail}`}
+              >Email</a
+            >
+            <p class="follow-item__sub">{contactEmail}</p>
+          </div>
+          <CopyButton client:visible value={contactEmail} label="Copy" />
+        </div>
       </div>
-      <div class="contact-form__row">
-        <label for="contact-email">Email</label>
-        <input
-          id="contact-email"
-          name="email"
-          type="email"
-          autocomplete="email"
-          required
-        />
-      </div>
-      <div class="contact-form__row">
-        <label for="contact-message">Message</label>
-        <textarea id="contact-message" name="message" rows="4" required
-        ></textarea>
-      </div>
-      <Button type="submit" variant="primary">Send it</Button>
-    </form>
-  </Reveal>
+    </Reveal>
+  </div>
 </Section>
 
 <style>
+  .contact-layout {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
+  }
+
+  .contact-layout__form,
+  .contact-layout__follow {
+    min-width: 0;
+  }
+
   .follow-card {
     display: flex;
     flex-direction: column;
-    width: 100%;
-    margin-top: var(--space-6);
-    margin-bottom: var(--space-7);
     border: var(--border-width) solid var(--color-border);
     border-radius: var(--radius-lg);
     overflow: hidden;
@@ -149,10 +172,52 @@ import {
     transition: color 0.15s ease-out;
   }
 
+  a.follow-item__label {
+    text-decoration: none;
+  }
+
+  .follow-item__label:hover {
+    color: var(--color-green);
+  }
+
   .follow-item__sub {
     margin: 0;
     font-size: var(--text-sm);
     color: var(--color-fg-muted);
+  }
+
+  .follow-item--email :global(.copy-button) {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    flex-shrink: 0;
+    margin-inline-start: auto;
+    padding: var(--space-2) var(--space-3);
+    border: var(--border-width) solid var(--color-border);
+    border-radius: var(--radius-md);
+    background-color: transparent;
+    color: var(--color-fg-muted);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    font-weight: var(--weight-bold);
+    letter-spacing: var(--tracking-wide);
+    text-transform: uppercase;
+    cursor: pointer;
+    transition:
+      color 0.15s ease-out,
+      border-color 0.15s ease-out,
+      background-color 0.15s ease-out;
+  }
+
+  .follow-item--email :global(.copy-button:hover) {
+    color: var(--color-green);
+    border-color: var(--color-green);
+    background-color: rgb(var(--color-green-rgb) / 0.05);
+  }
+
+  .follow-item--email :global(.copy-button .icon) {
+    inline-size: 1rem;
+    block-size: 1rem;
   }
 
   .contact-form {
@@ -165,9 +230,20 @@ import {
     border-radius: var(--radius-lg);
   }
 
-  .contact-form__heading {
+  .contact-form__header {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+  }
+
+  .contact-form__title {
     margin: 0;
     font-size: var(--text-lg);
+  }
+
+  .contact-form__subtitle {
+    margin: 0;
+    color: var(--color-fg-muted);
   }
 
   .contact-form__row {
@@ -204,28 +280,13 @@ import {
     border-color: var(--color-focus-ring);
   }
 
-  /* Desktop: follow card switches to a horizontal three-column layout */
+  /* Desktop: form takes the wider left column, follow card stacks at right */
   @media (min-width: 48rem) {
-    .follow-card {
-      flex-direction: row;
-    }
-
-    .follow-item {
-      flex: 1;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      text-align: center;
-      border-bottom: none;
-      border-right: var(--border-width) solid var(--color-border);
-    }
-
-    .follow-item:last-child {
-      border-right: none;
-    }
-
-    .follow-item__text {
-      align-items: center;
+    .contact-layout {
+      display: grid;
+      grid-template-columns: 1.5fr 1fr;
+      gap: var(--space-6);
+      align-items: start;
     }
   }
 </style>

@@ -1,7 +1,7 @@
 ---
 import Button from '../components/Button.astro';
 import Badge from '../components/Badge.astro';
-import HeroCanvas from '../components/motion/HeroCanvas';
+import HeroGame from '../components/motion/HeroGame';
 import { discordUrl, facebookUrl } from '../data/config';
 
 const isDev = import.meta.env.DEV;
@@ -9,7 +9,7 @@ const isDev = import.meta.env.DEV;
 
 <header class="hero">
   <div class="hero__canvas-wrap" aria-hidden="true">
-    <HeroCanvas client:load />
+    <HeroGame client:load />
   </div>
   <div class="hero__content">
     <p class="hero__tagline">Games | Art | Music | Fest</p>
@@ -76,6 +76,14 @@ const isDev = import.meta.env.DEV;
     gap: var(--space-4);
     padding-block: var(--space-9);
     padding-inline: var(--content-padding-inline);
+    transition: opacity 0.3s ease;
+  }
+
+  /* Game mode active: hand the canvas full keyboard/pointer control. The
+     overlay stays in the DOM for SEO/a11y but is invisible and inert. */
+  .hero[data-game-active='true'] .hero__content {
+    opacity: 0;
+    pointer-events: none;
   }
 
   .hero__tagline {
@@ -148,6 +156,15 @@ const isDev = import.meta.env.DEV;
       background-color: rgb(var(--color-bg-rgb) / 0.8);
     }
 
+    /* ...but on hover, restore the solid amber fill (the dark backing above
+       wins on specificity and was leaving hover text unreadable) */
+    :global([data-hero-time='day'])
+      .hero__actions
+      :global(.button--secondary:hover) {
+      background-color: var(--color-amber);
+      color: var(--color-bg);
+    }
+
     /* Canvas CSS background matches the day sky so sub-pixel gaps show sky-blue */
     :global([data-hero-time='day'] .hero-canvas) {
       background-color: var(--color-hero-day-sky);
@@ -190,7 +207,7 @@ const isDev = import.meta.env.DEV;
   .hero-dev-toggle {
     position: absolute;
     bottom: var(--space-3);
-    right: var(--space-3);
+    left: var(--space-3);
     z-index: 10;
     padding: var(--space-1) var(--space-3);
     background: rgb(var(--color-bg-rgb) / 0.72);

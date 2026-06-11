@@ -1,20 +1,38 @@
 ---
-import { contactEmail } from '../data/config';
+import Icon from '../components/Icon.astro';
 ---
 
 <footer class="site-footer">
   <div class="site-footer__inner">
-    <p class="site-footer__email">
-      <a href={`mailto:${contactEmail}`}>{contactEmail}</a>
+    <p class="site-footer__brand">
+      <a class="site-footer__brand-link" href="#main">
+        GAM<span class="site-footer__brand-accent">[fest]</span>
+      </a>
     </p>
     <p class="site-footer__copyright">
       &copy; 2026 GAM[fest]&trade;
       <span class="site-footer__tagline"
         >&ldquo;This is a real event&rdquo;&trade;</span
       >
+      <span class="site-footer__credit">
+        Built with <Icon name="heart" label="love" /> by <a
+          href="https://www.prettyprettyprettygood.org/"
+          target="_blank"
+          rel="noreferrer">prettyprettyprettygood</a
+        >
+      </span>
+      <span class="site-footer__credit">
+        Hero sprites: <a
+          href="https://sethbb.itch.io/32rogues"
+          target="_blank"
+          rel="noreferrer">32rogues</a
+        > by Seth Boyles
+      </span>
     </p>
     <p class="site-footer__back-to-top">
-      <a href="#main">Back to top</a>
+      <a class="site-footer__top-link" href="#main" aria-label="Back to top">
+        <Icon name="arrow-up-circle" />
+      </a>
     </p>
   </div>
 </footer>
@@ -41,6 +59,25 @@ import { contactEmail } from '../data/config';
     margin: 0;
   }
 
+  .site-footer__brand-link {
+    font-family: var(--font-mono);
+    font-size: var(--text-md);
+    font-weight: var(--weight-bold);
+    letter-spacing: var(--tracking-widest);
+    text-decoration: none;
+    color: var(--color-fg);
+  }
+
+  .site-footer__brand-link:hover {
+    color: var(--color-fg);
+  }
+
+  .site-footer__brand-accent {
+    color: var(--color-bg);
+    background-color: var(--color-green);
+    padding-inline: 0.15em;
+  }
+
   .site-footer__copyright {
     order: -1;
   }
@@ -52,6 +89,38 @@ import { contactEmail } from '../data/config';
     margin-top: 0.2em;
   }
 
+  .site-footer__back-to-top {
+    text-align: right;
+  }
+
+  .site-footer__credit {
+    display: block;
+    font-size: var(--text-xs);
+    color: var(--color-fg-muted);
+    margin-top: 0.3em;
+  }
+
+  .site-footer__credit :global(.icon) {
+    inline-size: 1em;
+    block-size: 1em;
+    color: var(--color-green-text);
+    vertical-align: -0.15em;
+  }
+
+  .site-footer__top-link {
+    display: inline-flex;
+    color: var(--color-fg-muted);
+  }
+
+  .site-footer__top-link:hover {
+    color: var(--color-green);
+  }
+
+  .site-footer__top-link :global(.icon) {
+    inline-size: 2em;
+    block-size: 2em;
+  }
+
   @media (min-width: 30rem) {
     .site-footer__inner {
       flex-direction: row;
@@ -59,7 +128,7 @@ import { contactEmail } from '../data/config';
       align-items: center;
     }
 
-    .site-footer__email {
+    .site-footer__brand {
       order: 0;
       flex: 1;
       text-align: left;

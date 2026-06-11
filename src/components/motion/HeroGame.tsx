@@ -1,9 +1,29 @@
 import { useEffect, useRef } from 'react';
+import Matter from 'matter-js';
 import { usePrefersReducedMotion } from '../../lib/usePrefersReducedMotion';
+
+const { Engine, Bodies, Body, Composite, Events } = Matter;
 
 const TARGET_FPS = 24;
 const FRAME_DURATION = 1000 / TARGET_FPS;
 const SPRITE_SIZE = 32;
+
+// --- Hero mini-game tuning (Phase 1: core platformer) -----------------
+
+/** Physics steps run at a fixed 60Hz regardless of render FPS. */
+const FIXED_PHYSICS_DT = 1000 / 60;
+/** Velocity is in px per physics step at 60Hz, so 2 ≈ 120px/s. */
+const PLAYER_WALK_SPEED = 2;
+/** Tuned so an unassisted jump reaches roughly `cell * 5`. */
+const PLAYER_JUMP_VELOCITY = 9;
+const PLAYER_FRICTION = 0.8;
+const LANDING_SQUASH_MS = 80;
+const SPAWN_DROP_CELLS = 8;
+/** Player spawns near the left edge of the canvas, not dead-center. */
+const PLAYER_SPAWN_X_CELLS = 4;
+const WALK_BOB_PERIOD_MS = 220;
+const IDLE_SWAY_PERIOD_MS = 600;
+const PROMPT_BLINK_MS = 600;
 
 interface Palette {
   sky: string;
@@ -84,8 +104,8 @@ function getPalette(daytime: boolean): Palette {
     ground: '#1a1820',
     windowLit: '#f0c840',
     windowDark: '#0a0c10',
-    sidewalk: '#252830',
-    curb: '#1c1e24',
+    sidewalk: '#3a3f4a',
+    curb: '#262a32',
     road: '#1c1e26',
   };
 }
@@ -93,6 +113,22 @@ function getPalette(daytime: boolean): Palette {
 function pseudoRandom(seed: number): number {
   const n = Math.sin(seed * 12.9898) * 43758.5453;
   return n - Math.floor(n);
+}
+
+/** Converts a `#rrggbb` palette color to an `rgba()` string with the given alpha. */
+function hexToRgba(hex: string, alpha: number): string {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+/** Sidewalk/road geometry shared between background art and player physics. */
+function getStreetLevels(baseline: number, cell: number) {
+  const sidewalkH = Math.round(cell);
+  const curbH = Math.max(2, Math.round(cell * 0.35));
+  const roadTop = baseline + sidewalkH + curbH;
+  return { sidewalkH, curbH, roadTop, roadDrop: sidewalkH + curbH };
 }
 
 // Fixed star field — stable positions on the right half of the canvas (clear of text overlay)
@@ -407,9 +443,7 @@ function drawStreet(
   elapsed: number,
   daytime: boolean,
 ) {
-  const sidewalkH = Math.round(cell);
-  const curbH = Math.max(2, Math.round(cell * 0.35));
-  const roadTop = baseline + sidewalkH + curbH;
+  const { sidewalkH, curbH, roadTop } = getStreetLevels(baseline, cell);
 
   // Sidewalk slab
   ctx.fillStyle = palette.sidewalk;
@@ -519,13 +553,12 @@ async function pickRandomSprite(): Promise<SpriteInfo> {
   return { img, col, row };
 }
 
-function draw(
+function drawBackground(
   ctx: CanvasRenderingContext2D,
   width: number,
   height: number,
   palette: Palette,
   elapsed: number,
-  sprite: SpriteInfo | null,
   daytime: boolean,
 ) {
   ctx.clearRect(0, 0, width, height);
@@ -616,38 +649,139 @@ function draw(
   );
 
   drawStreet(ctx, width, height, baseline, cell, palette, elapsed, daytime);
-
-  if (sprite) {
-    const scale = Math.max(2, Math.ceil(cell / 8));
-    const spriteW = SPRITE_SIZE * scale;
-    const spriteH = SPRITE_SIZE * scale;
-    const travel = width + spriteW * 2;
-    const sx = ((elapsed * 0.045) % travel) - spriteW;
-    const bob = Math.floor(elapsed / 220) % 2 === 0 ? 0 : -scale;
-    const sy = Math.round(baseline) - spriteH + bob;
-
-    ctx.save();
-    ctx.imageSmoothingEnabled = false;
-    ctx.translate(Math.round(sx) + spriteW, Math.round(sy));
-    ctx.scale(-1, 1);
-    ctx.drawImage(
-      sprite.img,
-      sprite.col * SPRITE_SIZE,
-      sprite.row * SPRITE_SIZE,
-      SPRITE_SIZE,
-      SPRITE_SIZE,
-      0,
-      0,
-      spriteW,
-      spriteH,
-    );
-    ctx.restore();
-  }
-
-  drawScanlines(ctx, width, height, palette.scanline);
 }
 
-export default function HeroCanvas() {
+interface SpriteDrawState {
+  facing: 'left' | 'right';
+  animState: 'idle' | 'walk';
+  elapsed: number;
+  squashed?: boolean;
+}
+
+/**
+ * Draws the character sprite anchored by its horizontal center and the
+ * y-position of its feet.
+ */
+function drawSprite(
+  ctx: CanvasRenderingContext2D,
+  sprite: SpriteInfo,
+  centerX: number,
+  feetY: number,
+  cell: number,
+  state: SpriteDrawState,
+) {
+  const scale = Math.max(2, Math.ceil(cell / 8));
+  let spriteW = SPRITE_SIZE * scale;
+  let spriteH = SPRITE_SIZE * scale;
+
+  let offsetX = 0;
+  let offsetY = 0;
+
+  if (state.animState === 'walk') {
+    // Vertical position bob while walking
+    offsetY =
+      Math.floor(state.elapsed / WALK_BOB_PERIOD_MS) % 2 === 0 ? 0 : -scale;
+  } else {
+    // Slower horizontal sway while idle
+    offsetX =
+      Math.floor(state.elapsed / IDLE_SWAY_PERIOD_MS) % 2 === 0 ? 0 : scale;
+  }
+
+  if (state.squashed) {
+    const squashedW = spriteW * 1.2;
+    const squashedH = spriteH * 0.8;
+    offsetY += spriteH - squashedH;
+    spriteW = squashedW;
+    spriteH = squashedH;
+  }
+
+  const dx = Math.round(centerX - spriteW / 2 + offsetX);
+  const dy = Math.round(feetY - spriteH + offsetY);
+
+  ctx.save();
+  ctx.imageSmoothingEnabled = false;
+  if (state.facing === 'right') {
+    ctx.translate(dx + spriteW, dy);
+    ctx.scale(-1, 1);
+  } else {
+    ctx.translate(dx, dy);
+  }
+  ctx.drawImage(
+    sprite.img,
+    sprite.col * SPRITE_SIZE,
+    sprite.row * SPRITE_SIZE,
+    SPRITE_SIZE,
+    SPRITE_SIZE,
+    0,
+    0,
+    spriteW,
+    spriteH,
+  );
+  ctx.restore();
+}
+
+const PROMPT_TEXT = '[ CLICK TO PLAY ]';
+
+interface ButtonRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * Draws a button-like prompt (steady frame, blinking label) over the visible
+ * (non-overlay) part of the canvas, and returns its bounds so clicks can be
+ * restricted to the button area.
+ */
+function drawClickToPlayPrompt(
+  ctx: CanvasRenderingContext2D,
+  width: number,
+  height: number,
+  cell: number,
+  elapsed: number,
+  palette: Palette,
+): ButtonRect {
+  // Centered under the billboard/brick building from drawBackground
+  // (bbX = width - cell*16, bbWidth = cell*13 → center = width - cell*9.5).
+  const x = width - cell * 9.5;
+  // Street band (below the baseline at height*0.8) — the only consistently
+  // open strip in the visible game area; the billboard/skyline fill the rest.
+  const y = height * 0.9;
+
+  ctx.save();
+  ctx.font = `${Math.max(10, Math.floor(cell * 0.85))}px 'Press Start 2P', monospace`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  const padX = cell * 0.8;
+  const padY = cell * 0.6;
+  const fontSize = Math.max(10, Math.floor(cell * 0.85));
+  const textWidth = ctx.measureText(PROMPT_TEXT).width;
+  const box: ButtonRect = {
+    x: x - textWidth / 2 - padX,
+    y: y - fontSize / 2 - padY,
+    width: textWidth + padX * 2,
+    height: fontSize + padY * 2,
+  };
+
+  ctx.fillStyle = hexToRgba(palette.frame, 0.75);
+  ctx.fillRect(box.x, box.y, box.width, box.height);
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = palette.glow;
+  ctx.strokeRect(box.x + 1, box.y + 1, box.width - 2, box.height - 2);
+
+  if (Math.floor(elapsed / PROMPT_BLINK_MS) % 2 === 0) {
+    ctx.fillStyle = palette.glow;
+    ctx.fillText(PROMPT_TEXT, Math.round(x), Math.round(y));
+  }
+  ctx.restore();
+  return box;
+}
+
+type GameState = 'passive' | 'active';
+
+export default function HeroGame() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const spriteRef = useRef<SpriteInfo | null>(null);
   const prefersReducedMotion = usePrefersReducedMotion();
@@ -669,6 +803,8 @@ export default function HeroCanvas() {
     const ctx = canvas.getContext('2d');
     if (!ctx) return undefined;
 
+    const heroEl = canvas.closest<HTMLElement>('.hero');
+
     const daytime = isESTDaytime();
     const palette = getPalette(daytime);
     document.documentElement.dataset.heroTime = daytime ? 'day' : 'night';
@@ -677,7 +813,348 @@ export default function HeroCanvas() {
     let height = canvas.clientHeight;
     let elapsed = 0;
     let frameId = 0;
-    let lastTime = 0;
+    let lastFrameTime = 0;
+    let lastPhysicsTime = 0;
+    let physicsAccumulator = 0;
+
+    let state: GameState = 'passive';
+    let facing: 'left' | 'right' = 'right';
+    let inputLeft = false;
+    let inputRight = false;
+    let canJump = false;
+    let squashUntil = 0;
+    let playerLevel: 'sidewalk' | 'road' = 'sidewalk';
+    let roadDropPx = 0;
+    let sidewalkRestY = 0;
+    let promptButtonRect: ButtonRect | null = null;
+
+    let engine: Matter.Engine | null = null;
+    let playerBody: Matter.Body | null = null;
+    let sidewalkGround: Matter.Body | null = null;
+    let roadGround: Matter.Body | null = null;
+
+    const cellOf = (h: number) => Math.max(3, Math.floor(h / 28));
+
+    const drawPassiveFrame = () => {
+      const cell = cellOf(height);
+      drawBackground(ctx, width, height, palette, elapsed, daytime);
+      drawScanlines(ctx, width, height, palette.scanline);
+      if (!prefersReducedMotion) {
+        promptButtonRect = drawClickToPlayPrompt(
+          ctx,
+          width,
+          height,
+          cell,
+          elapsed,
+          palette,
+        );
+      }
+    };
+
+    const drawActiveFrame = (now: number) => {
+      const cell = cellOf(height);
+      drawBackground(ctx, width, height, palette, elapsed, daytime);
+      if (spriteRef.current && playerBody) {
+        const playerHeight = cell * 4;
+        drawSprite(
+          ctx,
+          spriteRef.current,
+          playerBody.position.x,
+          playerBody.position.y + playerHeight / 2,
+          cell,
+          {
+            facing,
+            animState: inputLeft || inputRight ? 'walk' : 'idle',
+            elapsed,
+            squashed: now < squashUntil,
+          },
+        );
+      }
+      drawScanlines(ctx, width, height, palette.scanline);
+    };
+
+    const stepPhysics = (dt: number) => {
+      if (!engine || !playerBody) return;
+      const vx =
+        inputRight === inputLeft
+          ? 0
+          : inputRight
+            ? PLAYER_WALK_SPEED
+            : -PLAYER_WALK_SPEED;
+      if (vx !== 0) facing = vx > 0 ? 'right' : 'left';
+      Body.setVelocity(playerBody, { x: vx, y: playerBody.velocity.y });
+
+      // Jumping from the road and rising past sidewalk height: swap the
+      // active platform so the player lands back on the sidewalk instead of
+      // falling through to where the road platform used to be.
+      if (
+        playerLevel === 'road' &&
+        sidewalkGround &&
+        roadGround &&
+        playerBody.position.y <= sidewalkRestY
+      ) {
+        Composite.remove(engine.world, roadGround);
+        Composite.add(engine.world, sidewalkGround);
+        playerLevel = 'sidewalk';
+      }
+
+      Engine.update(engine, dt);
+    };
+
+    const isGroundPair = (pair: Matter.Pair) => {
+      const other =
+        pair.bodyA === playerBody
+          ? pair.bodyB
+          : pair.bodyB === playerBody
+            ? pair.bodyA
+            : null;
+      return other === sidewalkGround || other === roadGround;
+    };
+
+    const handleCollisionStart = (
+      event: Matter.IEventCollision<Matter.Engine>,
+    ) => {
+      for (const pair of event.pairs) {
+        if (!isGroundPair(pair)) continue;
+        if (!canJump) squashUntil = performance.now() + LANDING_SQUASH_MS;
+        canJump = true;
+      }
+    };
+
+    const handleCollisionEnd = (
+      event: Matter.IEventCollision<Matter.Engine>,
+    ) => {
+      for (const pair of event.pairs) {
+        if (isGroundPair(pair)) canJump = false;
+      }
+    };
+
+    const deactivate = () => {
+      if (state !== 'active') return;
+      state = 'passive';
+      heroEl?.removeAttribute('data-game-active');
+
+      if (engine) {
+        Events.off(engine, 'collisionStart', handleCollisionStart);
+        Events.off(engine, 'collisionEnd', handleCollisionEnd);
+        Composite.clear(engine.world, false);
+        Engine.clear(engine);
+      }
+      engine = null;
+      playerBody = null;
+      sidewalkGround = null;
+      roadGround = null;
+      playerLevel = 'sidewalk';
+
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+      document.removeEventListener('pointerdown', onDocumentPointerDown);
+
+      inputLeft = false;
+      inputRight = false;
+      drawPassiveFrame();
+    };
+
+    const onKeyDown = (event: KeyboardEvent) => {
+      switch (event.key) {
+        case 'ArrowRight':
+        case 'd':
+        case 'D':
+          event.preventDefault();
+          inputRight = true;
+          break;
+        case 'ArrowLeft':
+        case 'a':
+        case 'A':
+          event.preventDefault();
+          inputLeft = true;
+          break;
+        case ' ':
+          event.preventDefault();
+          if (!event.repeat && canJump && playerBody) {
+            Body.setVelocity(playerBody, {
+              x: playerBody.velocity.x,
+              y: -PLAYER_JUMP_VELOCITY,
+            });
+            canJump = false;
+          }
+          break;
+        case 'ArrowDown':
+        case 's':
+        case 'S':
+          event.preventDefault();
+          if (
+            !event.repeat &&
+            playerLevel === 'sidewalk' &&
+            canJump &&
+            playerBody &&
+            engine &&
+            sidewalkGround &&
+            roadGround
+          ) {
+            Composite.remove(engine.world, sidewalkGround);
+            Composite.add(engine.world, roadGround);
+            Body.setPosition(playerBody, {
+              x: playerBody.position.x,
+              y: playerBody.position.y + roadDropPx,
+            });
+            Body.setVelocity(playerBody, { x: playerBody.velocity.x, y: 0 });
+            playerLevel = 'road';
+            squashUntil = performance.now() + LANDING_SQUASH_MS;
+          }
+          break;
+        case 'ArrowUp':
+        case 'w':
+        case 'W':
+          event.preventDefault();
+          if (
+            !event.repeat &&
+            playerLevel === 'road' &&
+            canJump &&
+            playerBody &&
+            engine &&
+            sidewalkGround &&
+            roadGround
+          ) {
+            Composite.remove(engine.world, roadGround);
+            Composite.add(engine.world, sidewalkGround);
+            Body.setPosition(playerBody, {
+              x: playerBody.position.x,
+              y: playerBody.position.y - roadDropPx,
+            });
+            Body.setVelocity(playerBody, { x: playerBody.velocity.x, y: 0 });
+            playerLevel = 'sidewalk';
+            squashUntil = performance.now() + LANDING_SQUASH_MS;
+          }
+          break;
+        case 'Escape':
+          if (!event.repeat) deactivate();
+          break;
+        default:
+          break;
+      }
+    };
+
+    const onKeyUp = (event: KeyboardEvent) => {
+      switch (event.key) {
+        case 'ArrowRight':
+        case 'd':
+        case 'D':
+          inputRight = false;
+          break;
+        case 'ArrowLeft':
+        case 'a':
+        case 'A':
+          inputLeft = false;
+          break;
+        default:
+          break;
+      }
+    };
+
+    const onDocumentPointerDown = (event: PointerEvent) => {
+      if (event.target !== canvas) deactivate();
+    };
+
+    const activate = () => {
+      if (state === 'active' || prefersReducedMotion) return;
+      state = 'active';
+      heroEl?.setAttribute('data-game-active', 'true');
+
+      const cell = cellOf(height);
+      const baseline = height * 0.8;
+      const groundThickness = cell * 2;
+      const wallThickness = cell;
+      const playerWidth = cell * 2;
+      const playerHeight = cell * 4;
+      const { roadDrop } = getStreetLevels(baseline, cell);
+
+      engine = Engine.create();
+
+      sidewalkGround = Bodies.rectangle(
+        width / 2,
+        baseline + groundThickness / 2,
+        width * 2,
+        groundThickness,
+        { isStatic: true, friction: PLAYER_FRICTION },
+      );
+      roadGround = Bodies.rectangle(
+        width / 2,
+        baseline + roadDrop + groundThickness / 2,
+        width * 2,
+        groundThickness,
+        { isStatic: true, friction: PLAYER_FRICTION },
+      );
+      const leftWall = Bodies.rectangle(
+        -wallThickness / 2,
+        height / 2,
+        wallThickness,
+        height * 2,
+        { isStatic: true },
+      );
+      const rightWall = Bodies.rectangle(
+        width + wallThickness / 2,
+        height / 2,
+        wallThickness,
+        height * 2,
+        { isStatic: true },
+      );
+
+      playerBody = Bodies.rectangle(
+        cell * PLAYER_SPAWN_X_CELLS,
+        baseline - playerHeight / 2 - cell * SPAWN_DROP_CELLS,
+        playerWidth,
+        playerHeight,
+        { friction: PLAYER_FRICTION },
+      );
+      Body.setInertia(playerBody, Infinity);
+
+      Composite.add(engine.world, [
+        sidewalkGround,
+        leftWall,
+        rightWall,
+        playerBody,
+      ]);
+      Events.on(engine, 'collisionStart', handleCollisionStart);
+      Events.on(engine, 'collisionEnd', handleCollisionEnd);
+
+      facing = 'right';
+      inputLeft = false;
+      inputRight = false;
+      canJump = false;
+      playerLevel = 'sidewalk';
+      roadDropPx = roadDrop;
+      sidewalkRestY = baseline - playerHeight / 2;
+      physicsAccumulator = 0;
+      lastPhysicsTime = 0;
+      squashUntil = 0;
+
+      window.addEventListener('keydown', onKeyDown);
+      window.addEventListener('keyup', onKeyUp);
+      document.addEventListener('pointerdown', onDocumentPointerDown);
+    };
+
+    const isWithinPromptButton = (event: MouseEvent | PointerEvent) => {
+      if (!promptButtonRect) return false;
+      const rect = canvas.getBoundingClientRect();
+      const x = event.clientX - rect.left;
+      const y = event.clientY - rect.top;
+      return (
+        x >= promptButtonRect.x &&
+        x <= promptButtonRect.x + promptButtonRect.width &&
+        y >= promptButtonRect.y &&
+        y <= promptButtonRect.y + promptButtonRect.height
+      );
+    };
+
+    const onCanvasClick = (event: MouseEvent) => {
+      if (state === 'passive' && isWithinPromptButton(event)) activate();
+    };
+
+    const onCanvasPointerMove = (event: PointerEvent) => {
+      canvas.style.cursor =
+        state === 'passive' && isWithinPromptButton(event) ? 'pointer' : '';
+    };
 
     const resize = () => {
       const rect = canvas.getBoundingClientRect();
@@ -687,7 +1164,14 @@ export default function HeroCanvas() {
       canvas.width = Math.round(width * dpr);
       canvas.height = Math.round(height * dpr);
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      draw(ctx, width, height, palette, elapsed, spriteRef.current, daytime);
+
+      if (state === 'active') {
+        // World geometry is sized off `width`/`height` — simplest to reset
+        // rather than reposition every body on the fly.
+        deactivate();
+        return;
+      }
+      drawPassiveFrame();
     };
 
     resize();
@@ -697,18 +1181,40 @@ export default function HeroCanvas() {
       return () => window.removeEventListener('resize', resize);
     }
 
+    canvas.addEventListener('click', onCanvasClick);
+    canvas.addEventListener('pointermove', onCanvasPointerMove);
+
     const tick = (time: number) => {
       frameId = requestAnimationFrame(tick);
-      const delta = time - lastTime;
-      if (delta < FRAME_DURATION) return;
-      lastTime = time - (delta % FRAME_DURATION);
-      elapsed += delta;
-      draw(ctx, width, height, palette, elapsed, spriteRef.current, daytime);
+
+      if (state === 'active' && engine && playerBody) {
+        if (lastPhysicsTime === 0) lastPhysicsTime = time;
+        const frameDelta = Math.min(time - lastPhysicsTime, 250);
+        lastPhysicsTime = time;
+        physicsAccumulator += frameDelta;
+        while (physicsAccumulator >= FIXED_PHYSICS_DT) {
+          stepPhysics(FIXED_PHYSICS_DT);
+          physicsAccumulator -= FIXED_PHYSICS_DT;
+        }
+      } else {
+        lastPhysicsTime = 0;
+      }
+
+      const drawDelta = time - lastFrameTime;
+      if (drawDelta < FRAME_DURATION) return;
+      lastFrameTime = time - (drawDelta % FRAME_DURATION);
+      elapsed += drawDelta;
+
+      if (state === 'active') {
+        drawActiveFrame(time);
+      } else {
+        drawPassiveFrame();
+      }
     };
 
     const start = () => {
       if (frameId) return;
-      lastTime = performance.now();
+      lastFrameTime = performance.now();
       frameId = requestAnimationFrame(tick);
     };
 
@@ -730,6 +1236,9 @@ export default function HeroCanvas() {
       stop();
       observer.disconnect();
       window.removeEventListener('resize', resize);
+      canvas.removeEventListener('click', onCanvasClick);
+      canvas.removeEventListener('pointermove', onCanvasPointerMove);
+      deactivate();
     };
   }, [prefersReducedMotion]);
 

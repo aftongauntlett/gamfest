@@ -1,22 +1,129 @@
 ---
 import Section from '../components/Section.astro';
 import Reveal from '../components/motion/Reveal';
+
+const stats = [
+  '5-Story Screen',
+  'Free Play',
+  'Live Music',
+  'Tabletop Demos',
+  'Live Art',
+  'Hourly Trivia',
+];
 ---
 
 <Section id="recap" eyebrow="Level 01 // Recap" title="How it went">
-  <Reveal client:visible>
-    <p class="lede">
-      Somebody gave the nerds a video cable hooked up to a giant LED billboard.
-      This was going to get nuts — and it did, in the best way.
-    </p>
-    <p>
-      GAM[fest] #1 took over a corner of Baltimore's Charles Street Promenade
-      with free-play on a five-story screen, live music following along to a
-      Zelda 1 speedrun, tabletop demos, live art on the board, and an hourly
-      stream of nerd trivia. Folks wandered in from the bigger festival next
-      door, grabbed a controller, and got a turn on the biggest screen they'll
-      probably ever play on. <a href="#gallery">See the gallery</a> for the highlights,
-      or <a href="#lineup">check the lineup</a> for who made it happen.
-    </p>
-  </Reveal>
+  <div class="recap-layout">
+    <div class="recap-layout__main">
+      <Reveal client:visible>
+        <p class="lede">
+          GAM[fest] #1 took over a corner of Baltimore's Charles Street
+          Promenade — folks wandered in from the bigger festival next door,
+          grabbed a controller, and got a turn on the biggest screen they'll
+          probably ever play on. <a href="#gallery">See the gallery</a> for the
+          highlights, or <a href="#lineup">check the lineup</a> for who made it
+          happen.
+        </p>
+      </Reveal>
+      <Reveal client:visible delay={0.1}>
+        <blockquote class="recap-quote">
+          <p>
+            Somebody gave the nerds a video cable hooked up to a giant LED
+            billboard. This was going to get nuts — and it did, in the best
+            way.
+          </p>
+        </blockquote>
+      </Reveal>
+    </div>
+    <Reveal client:visible delay={0.18} className="recap-layout__stats">
+      <ul class="recap-stats">
+        {stats.map((stat) => <li>{stat}</li>)}
+      </ul>
+    </Reveal>
+  </div>
 </Section>
+
+<style>
+  .recap-layout {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-6);
+  }
+
+  .recap-layout__main {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5);
+    min-width: 0;
+  }
+
+  .recap-layout__stats {
+    min-width: 0;
+  }
+
+  .recap-layout__main .lede {
+    margin-bottom: 0;
+  }
+
+  .recap-quote {
+    margin: 0;
+    padding: var(--space-4) var(--space-5);
+    border-left: var(--border-width-thick) solid var(--color-border);
+    border-radius: var(--radius-md);
+    background-color: var(--color-bg-raised);
+    font-size: var(--text-md);
+    font-style: italic;
+    color: var(--color-fg);
+    transition:
+      border-left-color 0.2s ease-out,
+      background-color 0.2s ease-out;
+  }
+
+  .recap-quote p {
+    margin: 0;
+  }
+
+  .recap-quote:hover {
+    border-left-color: var(--color-green);
+    background-color: rgb(var(--color-green-rgb) / 0.03);
+  }
+
+  .recap-stats {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    list-style: none;
+  }
+
+  .recap-stats li {
+    padding: var(--space-3) var(--space-4);
+    border: var(--border-width) solid var(--color-border);
+    border-radius: var(--radius-md);
+    background-color: var(--color-bg-raised);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    font-weight: var(--weight-bold);
+    letter-spacing: var(--tracking-widest);
+    text-transform: uppercase;
+    color: var(--color-green-text);
+    transition:
+      border-color 0.15s ease-out,
+      color 0.15s ease-out,
+      background-color 0.15s ease-out;
+  }
+
+  .recap-stats li:hover {
+    border-color: var(--color-green);
+    color: var(--color-green);
+    background-color: rgb(var(--color-green-rgb) / 0.05);
+  }
+
+  @media (min-width: 48rem) {
+    .recap-layout {
+      display: grid;
+      grid-template-columns: 1.5fr 1fr;
+      gap: var(--space-6);
+      align-items: start;
+    }
+  }
+</style>
