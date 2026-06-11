@@ -7,6 +7,11 @@ const { Engine, Bodies, Body, Composite, Events } = Matter;
 const TARGET_FPS = 24;
 const FRAME_DURATION = 1000 / TARGET_FPS;
 const SPRITE_SIZE = 32;
+const ITEM_SPRITE_SIZE = 32;
+const RING_SPRITES = {
+  blue: { col: 4, row: 17 },
+  red: { col: 3, row: 17 },
+} as const;
 
 // --- Hero mini-game tuning (Phase 1: core platformer) -----------------
 
@@ -16,8 +21,12 @@ const HERO_BASELINE_RATIO = 0.85;
 const FIXED_PHYSICS_DT = 1000 / 60;
 /** Velocity is in px per physics step at 60Hz, so 2 ≈ 120px/s. */
 const PLAYER_WALK_SPEED = 2;
+const PLAYER_RUN_SPEED = 3;
 /** Tuned so an unassisted jump reaches the brick-wall ledge, but not the hero text tier. */
-const PLAYER_JUMP_VELOCITY = 12;
+const PLAYER_JUMP_VELOCITY = 10.8;
+const PLAYER_DOUBLE_JUMP_VELOCITY = 12.4;
+const PLAYER_SLAM_VELOCITY = 18;
+const SLAM_IMPACT_MIN_VELOCITY = 10;
 const PLAYER_FRICTION = 0.8;
 const LANDING_SQUASH_MS = 80;
 const SPAWN_DROP_CELLS = 8;
@@ -31,6 +40,9 @@ const BILLBOARD_GLITCH_MS = 600;
 const BILLBOARD_DELETE_MS_PER_CHAR = 40;
 const BILLBOARD_TYPE_MS_PER_CHAR = 60;
 const BILLBOARD_HIT_COOLDOWN_MS = 900;
+const CAMERA_SHIFT_CELLS = 5;
+const CAMERA_SHIFT_MS = 900;
+const FEEDBACK_MS = 1450;
 
 // --- Hero mini-game tuning (Phase 2: interactive objects) --------------
 
@@ -94,7 +106,7 @@ function getPalette(daytime: boolean): Palette {
       skylineNear: '#8aa4b0',
       screen: '#f8f8f8',
       frame: '#1a1a1a',
-      glow: '#22cc04',
+      glow: '#39ff14',
       accentAmber: '#ffb347',
       accentMagenta: '#ff4fd8',
       facePixel: '#1a5028',
@@ -354,7 +366,7 @@ function getBillboardGeometry(width: number, cell: number) {
   const bbY = cell * 3;
   const frameWidth = getBillboardFrameWidth(cell);
   const frameBottom = bbY + bbHeight + frameWidth;
-  const pipeGap = cell * 2;
+  const pipeGap = cell * 3.35;
   const brickTop = frameBottom + pipeGap;
   const brickX = bbX - frameWidth;
   const brickWidth = bbWidth + frameWidth * 2;
@@ -387,6 +399,8 @@ function drawBillboard(
     glitching?: boolean;
     noiseSeed?: number;
     showControls?: boolean;
+    helpOpen?: boolean;
+    screenBroken?: boolean;
   },
 ) {
   const { x, y } = origin;
@@ -399,6 +413,19 @@ function drawBillboard(
 
   ctx.fillStyle = colors.screen;
   ctx.fillRect(x, y, width, height);
+  if (options?.screenBroken) {
+    const seedBase = Math.floor(elapsed / 70);
+    for (let i = 0; i < 80; i++) {
+      const px = x + pseudoRandom(seedBase + i * 4.7) * width;
+      const py = y + pseudoRandom(seedBase + i * 8.3) * height;
+      const size = 1 + Math.floor(pseudoRandom(seedBase + i * 2.1) * 3);
+      ctx.globalAlpha = 0.2 + pseudoRandom(seedBase + i * 3.4) * 0.55;
+      ctx.fillStyle =
+        pseudoRandom(seedBase + i * 5.9) > 0.5 ? colors.glow : colors.frame;
+      ctx.fillRect(px, py, size, size);
+    }
+    ctx.globalAlpha = 1;
+  }
 
   // CRT phosphor bloom — subtle radial glow from screen center
   if (nightGlow) {
@@ -413,28 +440,44 @@ function drawBillboard(
     ctx.fillRect(x, y, width, height);
   }
 
-  // Face — shifted into upper ~40% of screen to leave room for text below
-  ctx.fillStyle = colors.facePixel;
-  const px = Math.max(2, Math.floor(width / 10));
-  const ox = x + (width - px * 8) / 2;
-  const oy = y + Math.floor((height - px * 6) * 0.32);
-  if (glitching || frame === 2) {
-    const seedBase = Math.floor((options?.noiseSeed ?? elapsed) / 80);
-    const noiseCount = glitching ? 18 : 14;
-    for (let i = 0; i < noiseCount; i++) {
-      const col = Math.floor(pseudoRandom(seedBase + i * 9.17) * 8);
-      const row = Math.floor(pseudoRandom(seedBase + i * 5.31 + 2) * 6);
-      ctx.globalAlpha = 0.55 + pseudoRandom(seedBase + i * 3.83) * 0.45;
-      ctx.fillRect(ox + col * px, oy + row * px, px - 1, px - 1);
-    }
-    ctx.globalAlpha = 1;
+  if (options?.helpOpen) {
+    drawBillboardHelp(ctx, x, y, width, height, cell, colors, nightGlow);
+  } else if (options?.screenBroken) {
+    ctx.strokeStyle = colors.glow;
+    ctx.lineWidth = Math.max(1, Math.floor(cell * 0.12));
+    ctx.beginPath();
+    ctx.moveTo(x + width * 0.18, y + height * 0.2);
+    ctx.lineTo(x + width * 0.42, y + height * 0.45);
+    ctx.lineTo(x + width * 0.33, y + height * 0.72);
+    ctx.lineTo(x + width * 0.58, y + height * 0.88);
+    ctx.moveTo(x + width * 0.78, y + height * 0.18);
+    ctx.lineTo(x + width * 0.62, y + height * 0.44);
+    ctx.lineTo(x + width * 0.82, y + height * 0.68);
+    ctx.stroke();
   } else {
-    FACE_FRAMES[frame].forEach(([col, row]) => {
-      ctx.fillRect(ox + col * px, oy + row * px, px - 1, px - 1);
-    });
+    // Face — shifted into upper ~40% of screen to leave room for text below
+    ctx.fillStyle = colors.facePixel;
+    const px = Math.max(2, Math.floor(width / 10));
+    const ox = x + (width - px * 8) / 2;
+    const oy = y + Math.floor((height - px * 6) * 0.32);
+    if (glitching || frame === 2) {
+      const seedBase = Math.floor((options?.noiseSeed ?? elapsed) / 80);
+      const noiseCount = glitching ? 18 : 14;
+      for (let i = 0; i < noiseCount; i++) {
+        const col = Math.floor(pseudoRandom(seedBase + i * 9.17) * 8);
+        const row = Math.floor(pseudoRandom(seedBase + i * 5.31 + 2) * 6);
+        ctx.globalAlpha = 0.55 + pseudoRandom(seedBase + i * 3.83) * 0.45;
+        ctx.fillRect(ox + col * px, oy + row * px, px - 1, px - 1);
+      }
+      ctx.globalAlpha = 1;
+    } else {
+      FACE_FRAMES[frame].forEach(([col, row]) => {
+        ctx.fillRect(ox + col * px, oy + row * px, px - 1, px - 1);
+      });
+    }
   }
 
-  if (showMessage) {
+  if (showMessage && !options?.helpOpen && !options?.screenBroken) {
     // Terminal text with blinking underscore cursor
     const cursor = Math.floor(elapsed / 530) % 2 === 0 ? '_' : ' ';
     const message = options?.message ?? BILLBOARD_TEXT;
@@ -443,10 +486,7 @@ function drawBillboard(
     const maxW = width - cell * 2;
     let fs = Math.max(8, Math.floor(cell * 1.35));
     ctx.font = `${fs}px 'VT323', monospace`;
-    while (
-      lines.some((line) => ctx.measureText(line).width > maxW) &&
-      fs > 8
-    ) {
+    while (lines.some((line) => ctx.measureText(line).width > maxW) && fs > 8) {
       fs -= 1;
       ctx.font = `${fs}px 'VT323', monospace`;
     }
@@ -455,7 +495,10 @@ function drawBillboard(
     ctx.textBaseline = 'middle';
     const lineHeight = fs * 0.95;
     const startY =
-      y + height - Math.floor(cell * 1.6) - ((lines.length - 1) * lineHeight) / 2;
+      y +
+      height -
+      Math.floor(cell * 1.6) -
+      ((lines.length - 1) * lineHeight) / 2;
     lines.forEach((line, index) => {
       ctx.fillText(line, x + width / 2, startY + index * lineHeight);
     });
@@ -464,9 +507,11 @@ function drawBillboard(
   }
 
   if (options?.showControls) {
-    const chip = Math.max(10, cell * 1.25);
-    const chipX = x + width - chip - cell * 0.45;
-    const chipY = y + cell * 0.45;
+    const {
+      x: chipX,
+      y: chipY,
+      size: chip,
+    } = getBillboardHelpButtonBounds(x, y, width, cell);
     ctx.fillStyle = colors.frame;
     ctx.fillRect(chipX, chipY, chip, chip);
     ctx.strokeStyle = colors.glow;
@@ -476,25 +521,101 @@ function drawBillboard(
     ctx.font = `${Math.max(8, Math.floor(cell * 0.8))}px 'Press Start 2P', monospace`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('?', chipX + chip / 2, chipY + chip / 2 + 1);
-
-    const panelW = Math.min(width * 1.35, cell * 18);
-    const panelH = cell * 6.1;
-    const panelX = Math.max(cell, x - panelW - cell * 0.8);
-    const panelY = y + cell * 1.1;
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.72)';
-    ctx.fillRect(panelX, panelY, panelW, panelH);
-    ctx.strokeStyle = colors.glow;
-    ctx.strokeRect(panelX + 1, panelY + 1, panelW - 2, panelH - 2);
+    ctx.fillText(
+      options.helpOpen ? 'X' : '?',
+      chipX + chip / 2,
+      chipY + chip / 2 + 1,
+    );
     ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-    ctx.font = `${Math.max(7, Math.floor(cell * 0.62))}px 'Press Start 2P', monospace`;
-    const controls = ['A/D  MOVE', 'W/S  CURB', 'SPACE  JUMP', 'ESC  EXIT', 'R  RESET'];
-    controls.forEach((line, index) => {
-      ctx.fillText(line, panelX + cell * 0.65, panelY + cell * 0.6 + index * cell);
-    });
     ctx.textBaseline = 'alphabetic';
   }
+}
+
+function getBillboardHelpButtonBounds(
+  billboardX: number,
+  billboardY: number,
+  billboardWidth: number,
+  cell: number,
+) {
+  const size = Math.max(10, cell * 1.25);
+  return {
+    x: billboardX + billboardWidth - size - cell * 0.45,
+    y: billboardY + cell * 0.45,
+    size,
+  };
+}
+
+function drawBillboardHelp(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  cell: number,
+  colors: { frame: string; screen: string; glow: string; facePixel: string },
+  nightGlow: boolean,
+) {
+  const inset = Math.max(4, Math.floor(cell * 0.42));
+  const px = Math.max(2, Math.floor(cell * 0.18));
+  const panelX = x + inset;
+  const panelY = y + inset;
+  const panelW = width - inset * 2;
+  const panelH = height - inset * 2;
+  const lineColor = nightGlow ? colors.glow : '#0d7a32';
+  const textColor = nightGlow ? '#b8ffb0' : '#12331b';
+
+  ctx.fillStyle = nightGlow ? '#071807' : '#eaffdf';
+  ctx.fillRect(panelX, panelY, panelW, panelH);
+
+  ctx.strokeStyle = lineColor;
+  ctx.lineWidth = Math.max(1, Math.floor(cell * 0.1));
+  ctx.strokeRect(panelX + 1, panelY + 1, panelW - 2, panelH - 2);
+
+  ctx.fillStyle = colors.frame;
+  ctx.fillRect(panelX + px, panelY + px, panelW - px * 2, cell * 1.25);
+  ctx.fillStyle = colors.glow;
+  ctx.font = `${Math.max(7, Math.floor(cell * 0.54))}px 'Press Start 2P', monospace`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('HELP', x + width / 2, panelY + px + cell * 0.65);
+
+  const rows = [
+    ['MOVE', 'A/D'],
+    ['SPRINT', 'SHIFT'],
+    ['JUMP', 'SPACE'],
+    ['POWER', '2X SPACE'],
+    ['EXIT', 'ESC'],
+    ['RESET', 'R'],
+  ];
+  const rowFont = Math.max(6, Math.floor(cell * 0.42));
+  const rowGap = Math.max(11, Math.floor(cell * 1.05));
+  let rowY = panelY + cell * 2.25;
+
+  ctx.font = `${rowFont}px 'Press Start 2P', monospace`;
+  ctx.textBaseline = 'middle';
+  for (const [label, key] of rows) {
+    ctx.textAlign = 'left';
+    ctx.fillStyle = textColor;
+    ctx.fillText(label, panelX + cell * 0.55, rowY);
+
+    const keyW = Math.min(
+      panelW * 0.5,
+      ctx.measureText(key).width + cell * 0.72,
+    );
+    const keyX = panelX + panelW - keyW - cell * 0.46;
+    const keyH = Math.max(7, rowFont + cell * 0.34);
+    ctx.fillStyle = colors.frame;
+    ctx.fillRect(keyX, rowY - keyH / 2, keyW, keyH);
+    ctx.strokeStyle = lineColor;
+    ctx.strokeRect(keyX + 1, rowY - keyH / 2 + 1, keyW - 2, keyH - 2);
+    ctx.textAlign = 'center';
+    ctx.fillStyle = colors.glow;
+    ctx.fillText(key, keyX + keyW / 2, rowY + 1);
+    rowY += rowGap;
+  }
+
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
 }
 
 function drawPipes(
@@ -674,6 +795,8 @@ function drawBackground(
     glitching?: boolean;
     noiseSeed?: number;
     showControls?: boolean;
+    helpOpen?: boolean;
+    screenBroken?: boolean;
     faceFrame?: number;
   },
 ) {
@@ -767,7 +890,8 @@ function drawBackground(
       glow: palette.glow,
       facePixel: palette.facePixel,
     },
-    billboardOptions?.faceFrame ?? Math.floor(elapsed / 1400) % FACE_FRAMES.length,
+    billboardOptions?.faceFrame ??
+      Math.floor(elapsed / 1400) % FACE_FRAMES.length,
     !daytime,
     elapsed,
     showBillboardMessage,
@@ -910,6 +1034,7 @@ type ObjectVariant =
   | 'magenta'
   | 'wordmark'
   | 'wordmarkAccent'
+  | 'wordmarkPlate'
   | 'tagline';
 
 /**
@@ -921,7 +1046,7 @@ type ObjectState = 'pinned' | 'damaged' | 'fallen';
 
 interface InteractiveObject {
   body: Matter.Body;
-  kind: 'button' | 'badge' | 'wordmark' | 'tagline';
+  kind: 'button' | 'badge' | 'wordmark' | 'wordmarkPlate' | 'tagline';
   variant: ObjectVariant;
   label: string;
   width: number;
@@ -943,9 +1068,17 @@ interface ObjectLayout {
 
 interface HeroLayout {
   tagline: ObjectLayout[];
+  wordmarkPlate: ObjectLayout;
   wordmark: ObjectLayout[];
   badges: ObjectLayout[];
   buttons: ObjectLayout[];
+}
+
+interface FloatingFeedback {
+  text: string;
+  tone: 'good' | 'bad' | 'warn';
+  startedAt: number;
+  yOffset: number;
 }
 
 const BADGE_DEFS: ReadonlyArray<{ text: string; variant: ObjectVariant }> = [
@@ -959,6 +1092,36 @@ const BUTTON_DEFS: ReadonlyArray<{ text: string; variant: ObjectVariant }> = [
   { text: 'FOLLOW ON FACEBOOK', variant: 'secondary' },
 ];
 
+function measureTrackedText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  tracking: number,
+): number {
+  if (text.length <= 1) return ctx.measureText(text).width;
+  return ctx.measureText(text).width + (text.length - 1) * tracking;
+}
+
+function drawTrackedText(
+  ctx: CanvasRenderingContext2D,
+  text: string,
+  x: number,
+  y: number,
+  tracking: number,
+) {
+  const totalW = measureTrackedText(ctx, text, tracking);
+  let cursorX = x - totalW / 2;
+
+  for (const char of text) {
+    const charW = ctx.measureText(char).width;
+    ctx.fillText(char, cursorX + charW / 2, y);
+    cursorX += charW + tracking;
+  }
+}
+
+function getButtonLines(label: string): string[] {
+  return [label];
+}
+
 /**
  * Lays out the badge row and CTA button row in a left-aligned column,
  * mirroring `.hero__badges` / `.hero__actions` from the passive layout (see
@@ -966,17 +1129,14 @@ const BUTTON_DEFS: ReadonlyArray<{ text: string; variant: ObjectVariant }> = [
  * Sizes are measured from the same pixel font the objects are drawn with, so
  * physics bodies match their visuals exactly.
  */
-function computeHeroLayout(
-  ctx: CanvasRenderingContext2D,
-  cell: number,
-): HeroLayout {
-  const marginX = Math.max(cell * 2.7, 48);
-  const rowGap = Math.max(cell * 0.8, 16);
+function computeHeroLayout(ctx: CanvasRenderingContext2D): HeroLayout {
+  const marginX = 64;
+  const rowGap = 16;
 
-  const taglineFont = Math.max(12, Math.floor(cell * 0.72));
-  const taglinePadX = Math.max(2, cell * 0.12);
-  const taglineHeight = taglineFont * 1.35;
-  const taglineY = Math.max(cell * 2.15, 42);
+  const taglineFont = 14;
+  const taglinePadX = 2;
+  const taglineHeight = taglineFont * 1.6;
+  const taglineY = 48;
   const taglineChunks = ['GAMES', 'ART', 'MUSIC', 'FEST'];
   ctx.font = `700 ${taglineFont}px ui-monospace, 'SF Mono', Menlo, Consolas, monospace`;
   let taglineX = marginX;
@@ -996,74 +1156,90 @@ function computeHeroLayout(
     return layout;
   });
 
-  const wordmarkFont = Math.max(44, Math.floor(cell * 3.4));
-  const wordmarkY = taglineY + taglineHeight + Math.max(cell * 0.45, 8);
+  const wordmarkFont = 72;
+  const wordmarkHeight = wordmarkFont * 1.1;
+  const wordmarkY = taglineY + taglineHeight + rowGap;
   const wordmarkChars = Array.from('GAM[fest]');
+  const wordmarkTracking = wordmarkFont * 0.04;
+  const wordmarkAccentGap = wordmarkFont * 0.18;
   ctx.font = `${wordmarkFont}px 'VT323', monospace`;
   let wordmarkX = marginX;
+  let accentLeft = 0;
+  let accentRight = 0;
   const wordmark = wordmarkChars.map((text, index) => {
     const isAccent = index >= 3;
-    const padX = isAccent ? wordmarkFont * 0.07 : 0;
-    const width = ctx.measureText(text).width + padX * 2;
+    const width = ctx.measureText(text).width;
+    if (index === 3) accentLeft = wordmarkX;
     const layout: ObjectLayout = {
       text,
       variant: isAccent ? 'wordmarkAccent' : 'wordmark',
       x: wordmarkX,
       y: wordmarkY,
       width,
-      height: wordmarkFont * 0.98,
+      height: wordmarkHeight,
     };
-    wordmarkX += width;
+    wordmarkX += width + (index === 2 ? wordmarkAccentGap : wordmarkTracking);
+    if (isAccent) accentRight = wordmarkX - wordmarkTracking;
     return layout;
   });
+  const wordmarkPlateHeight = wordmarkFont;
+  const wordmarkPlatePadX = wordmarkFont * 0.15;
+  const wordmarkPlate: ObjectLayout = {
+    text: '[fest] plate',
+    variant: 'wordmarkPlate',
+    x: accentLeft - wordmarkPlatePadX,
+    y: wordmarkY + (wordmarkHeight - wordmarkPlateHeight) / 2,
+    width: accentRight - accentLeft + wordmarkPlatePadX * 2,
+    height: wordmarkPlateHeight,
+  };
 
-  const badgeFont = Math.max(8, Math.floor(cell * 0.8));
-  const badgePadX = cell * 0.5;
-  const badgePadY = cell * 0.35;
-  const badgeGap = cell * 0.6;
-  const badgeY = wordmarkY + wordmarkFont * 0.98 + rowGap;
+  const badgeFont = 12;
+  const badgePadX = 8;
+  const badgePadY = 4;
+  const badgeGap = 12;
+  const badgeHeight = badgeFont * 1.4 + badgePadY * 2 + 4;
+  const badgeY = wordmarkY + wordmarkHeight + rowGap;
 
   ctx.font = `${badgeFont}px 'Press Start 2P', monospace`;
   let badgeX = marginX;
   const badges = BADGE_DEFS.map(({ text, variant }) => {
     const width = ctx.measureText(text).width + badgePadX * 2;
-    const height = badgeFont + badgePadY * 2;
     const layout: ObjectLayout = {
       text,
       variant,
       x: badgeX,
       y: badgeY,
       width,
-      height,
+      height: badgeHeight,
     };
     badgeX += width + badgeGap;
     return layout;
   });
 
-  const buttonFont = Math.max(9, Math.floor(cell * 0.9));
-  const buttonPadX = cell * 1.2;
-  const buttonPadY = cell * 0.7;
-  const buttonGap = cell * 0.8;
-  const buttonY = badgeY + badgeFont + badgePadY * 2 + rowGap;
+  const buttonFont = 14;
+  const buttonPadX = 24;
+  const buttonGap = 12;
+  const buttonHeight = 48;
+  const buttonY = badgeY + badgeHeight + rowGap;
 
-  ctx.font = `${buttonFont}px 'Press Start 2P', monospace`;
+  ctx.font = `700 ${buttonFont}px ui-monospace, 'SF Mono', Menlo, Consolas, monospace`;
   let buttonX = marginX;
   const buttons = BUTTON_DEFS.map(({ text, variant }) => {
-    const width = ctx.measureText(text).width + buttonPadX * 2;
-    const height = buttonFont + buttonPadY * 2;
+    const tracking = buttonFont * 0.16;
+    const width = measureTrackedText(ctx, text, tracking) + buttonPadX * 2 + 4;
     const layout: ObjectLayout = {
       text,
       variant,
       x: buttonX,
       y: buttonY,
       width,
-      height,
+      height: buttonHeight,
     };
     buttonX += width + buttonGap;
     return layout;
   });
 
-  return { tagline, wordmark, badges, buttons };
+  return { tagline, wordmarkPlate, wordmark, badges, buttons };
 }
 
 /**
@@ -1089,7 +1265,7 @@ function createInteractiveObject(
   layout: ObjectLayout,
   kind: InteractiveObject['kind'],
   mass: number,
-  destructible = kind === 'button' || kind === 'badge',
+  destructible = true,
 ): InteractiveObject {
   return {
     body: createPinnedBody(layout, mass),
@@ -1124,16 +1300,47 @@ function drawCrack(
   cell: number,
   daytime: boolean,
 ) {
-  ctx.strokeStyle = daytime
-    ? 'rgba(0, 0, 0, 0.45)'
-    : 'rgba(255, 255, 255, 0.5)';
-  ctx.lineWidth = Math.max(1, Math.round(cell * 0.08));
-  ctx.beginPath();
-  ctx.moveTo(-width * 0.1, -height / 2);
-  ctx.lineTo(width * 0.05, -height * 0.1);
-  ctx.lineTo(-width * 0.08, height * 0.15);
-  ctx.lineTo(width * 0.1, height / 2);
-  ctx.stroke();
+  const lineWidth = Math.max(1, Math.round(cell * 0.08));
+  const colors = daytime
+    ? ['rgba(0, 0, 0, 0.48)', 'rgba(255, 255, 255, 0.62)']
+    : ['rgba(255, 255, 255, 0.58)', 'rgba(57, 255, 20, 0.75)'];
+  const shards = [
+    [
+      [-0.34, -0.46],
+      [-0.12, -0.14],
+      [-0.25, 0.22],
+      [-0.02, 0.48],
+    ],
+    [
+      [0.28, -0.42],
+      [0.08, -0.08],
+      [0.24, 0.12],
+      [0.12, 0.42],
+    ],
+    [
+      [-0.02, -0.36],
+      [0.16, -0.16],
+      [-0.06, 0.08],
+      [0.2, 0.32],
+    ],
+  ];
+
+  shards.forEach((points, index) => {
+    ctx.strokeStyle = colors[index % colors.length];
+    ctx.lineWidth = lineWidth + (index === 1 ? 1 : 0);
+    ctx.beginPath();
+    points.forEach(([x, y], pointIndex) => {
+      const px = x * width;
+      const py = y * height;
+      if (pointIndex === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    });
+    ctx.stroke();
+  });
+
+  ctx.fillStyle = daytime ? 'rgba(0, 0, 0, 0.35)' : 'rgba(255, 79, 216, 0.6)';
+  ctx.fillRect(-width * 0.2, -height * 0.05, lineWidth * 2, lineWidth * 2);
+  ctx.fillRect(width * 0.17, height * 0.18, lineWidth * 2, lineWidth * 2);
 }
 
 /**
@@ -1165,15 +1372,59 @@ function drawInteractiveObject(
   ctx.translate(x, y);
   ctx.rotate(body.angle);
 
+  if (obj.kind === 'wordmarkPlate') {
+    const age = now - hitAt;
+    if (state === 'fallen' && age > 520) {
+      ctx.restore();
+      return;
+    }
+
+    if (state === 'fallen') {
+      const alpha = Math.max(0, 1 - age / 520);
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle =
+        Math.floor(age / 80) % 2 === 0 ? palette.glow : palette.accentMagenta;
+      const shardCount = 14;
+      for (let i = 0; i < shardCount; i++) {
+        const seed = body.id * 31 + i * 11.7;
+        const sx = (pseudoRandom(seed) - 0.5) * width;
+        const sy = (pseudoRandom(seed + 4.2) - 0.5) * height;
+        const driftX = (pseudoRandom(seed + 8.4) - 0.5) * cell * 2.1;
+        const driftY = (pseudoRandom(seed + 12.6) - 0.2) * cell * 1.8;
+        const shardW = Math.max(
+          3,
+          cell * (0.25 + pseudoRandom(seed + 2) * 0.5),
+        );
+        const shardH = Math.max(
+          3,
+          cell * (0.2 + pseudoRandom(seed + 3) * 0.45),
+        );
+        ctx.fillRect(
+          sx + driftX * (age / 520),
+          sy + driftY * (age / 520),
+          shardW,
+          shardH,
+        );
+      }
+      ctx.globalAlpha = 1;
+      ctx.restore();
+      return;
+    }
+
+    ctx.fillStyle = palette.glow;
+    ctx.fillRect(-width / 2, -height / 2, width, height);
+    if (state === 'damaged') drawCrack(ctx, width, height, cell, daytime);
+    ctx.restore();
+    return;
+  }
+
   if (obj.kind === 'wordmark') {
-    const fontSize = Math.max(44, Math.floor(cell * 3.4));
+    const fontSize = 72;
     ctx.font = `${fontSize}px 'VT323', monospace`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
     if (variant === 'wordmarkAccent') {
-      ctx.fillStyle = palette.glow;
-      ctx.fillRect(-width / 2, -height / 2, width, height);
       ctx.fillStyle = palette.frame;
     } else {
       ctx.fillStyle = daytime ? '#1a2030' : '#f4efe6';
@@ -1186,7 +1437,7 @@ function drawInteractiveObject(
   }
 
   if (obj.kind === 'tagline') {
-    const fontSize = Math.max(12, Math.floor(cell * 0.72));
+    const fontSize = 14;
     ctx.font = `700 ${fontSize}px ui-monospace, 'SF Mono', Menlo, Consolas, monospace`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -1220,18 +1471,28 @@ function drawInteractiveObject(
     ctx.fillStyle = accent;
   }
 
-  const fontSize =
+  const fontSize = obj.kind === 'button' ? 14 : 12;
+  ctx.font =
     obj.kind === 'button'
-      ? Math.max(9, Math.floor(cell * 0.9))
-      : Math.max(8, Math.floor(cell * 0.8));
-  ctx.font = `${fontSize}px 'Press Start 2P', monospace`;
+      ? `700 ${fontSize}px ui-monospace, 'SF Mono', Menlo, Consolas, monospace`
+      : `${fontSize}px 'Press Start 2P', monospace`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.fillText(label, 0, 0);
+  if (obj.kind === 'button') {
+    const lines = getButtonLines(label);
+    const tracking = fontSize * 0.16;
+    const lineHeight = fontSize * 1.05;
+    const startY = -((lines.length - 1) * lineHeight) / 2;
+    lines.forEach((line, index) => {
+      drawTrackedText(ctx, line, 0, startY + index * lineHeight, tracking);
+    });
+  } else {
+    ctx.fillText(label, 0, 0);
+  }
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
 
-  if (state === 'damaged') {
+  if (state === 'damaged' || (state === 'fallen' && now - hitAt < 520)) {
     drawCrack(ctx, width, height, cell, daytime);
   }
 
@@ -1242,13 +1503,12 @@ function drawTaglineSeparators(
   ctx: CanvasRenderingContext2D,
   objects: InteractiveObject[],
   daytime: boolean,
-  cell: number,
 ) {
   const chunks = objects.filter((obj) => obj.kind === 'tagline');
   if (chunks.length < 2) return;
 
   ctx.save();
-  const fontSize = Math.max(12, Math.floor(cell * 0.72));
+  const fontSize = 14;
   ctx.font = `700 ${fontSize}px ui-monospace, 'SF Mono', Menlo, Consolas, monospace`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
@@ -1271,14 +1531,147 @@ function drawTaglineSeparators(
   ctx.restore();
 }
 
+function drawRingPickup(
+  ctx: CanvasRenderingContext2D,
+  body: Matter.Body,
+  cell: number,
+  color: string,
+  collected: boolean,
+  sheet: HTMLImageElement | null,
+  sprite: (typeof RING_SPRITES)[keyof typeof RING_SPRITES],
+) {
+  if (collected) return;
+  const bob = Math.sin(performance.now() * 0.006 + body.id) * cell * 0.12;
+  const x = body.position.x;
+  const y = body.position.y + bob;
+  const size = Math.max(28, Math.round(cell * 2.25));
+
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.imageSmoothingEnabled = false;
+
+  ctx.globalAlpha = 0.28;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(0, 0, size * 0.48, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 0.42;
+  ctx.fillRect(
+    -size * 0.34,
+    size * 0.36,
+    size * 0.68,
+    Math.max(2, cell * 0.18),
+  );
+  ctx.globalAlpha = 1;
+
+  if (sheet?.complete && sheet.naturalWidth > 0) {
+    ctx.drawImage(
+      sheet,
+      sprite.col * ITEM_SPRITE_SIZE,
+      sprite.row * ITEM_SPRITE_SIZE,
+      ITEM_SPRITE_SIZE,
+      ITEM_SPRITE_SIZE,
+      -size / 2,
+      -size / 2,
+      size,
+      size,
+    );
+  } else {
+    ctx.lineWidth = Math.max(3, Math.floor(cell * 0.24));
+    ctx.strokeStyle = color;
+    ctx.beginPath();
+    ctx.arc(0, size * 0.06, size * 0.28, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+    ctx.fillRect(-size * 0.1, -size * 0.4, size * 0.2, size * 0.16);
+  }
+
+  ctx.restore();
+}
+
+function drawElevatedLedge(
+  ctx: CanvasRenderingContext2D,
+  body: Matter.Body,
+  cell: number,
+  palette: Palette,
+) {
+  const { x, y } = body.position;
+  const width = body.bounds.max.x - body.bounds.min.x;
+  const height = body.bounds.max.y - body.bounds.min.y;
+  ctx.save();
+  ctx.translate(x - width / 2, y - height / 2);
+  ctx.fillStyle = palette.grout;
+  ctx.fillRect(0, 0, width, height);
+  const brickW = Math.max(10, cell * 1.7);
+  const brickH = Math.max(4, cell * 0.55);
+  for (let by = 1; by < height; by += brickH) {
+    const row = Math.floor(by / brickH);
+    for (let bx = row % 2 === 0 ? 1 : -brickW / 2; bx < width; bx += brickW) {
+      ctx.fillStyle =
+        (row + Math.floor(bx / brickW)) % 2 === 0
+          ? palette.brickA
+          : palette.brickB;
+      ctx.fillRect(bx, by, brickW - 1, brickH - 1);
+    }
+  }
+  ctx.restore();
+}
+
+function drawFeedback(
+  ctx: CanvasRenderingContext2D,
+  feedbacks: FloatingFeedback[],
+  width: number,
+  cell: number,
+  now: number,
+) {
+  const active = feedbacks.filter(
+    (feedback) => now - feedback.startedAt < FEEDBACK_MS,
+  );
+  if (active.length === 0) return;
+
+  ctx.save();
+  ctx.font = `${Math.max(11, Math.floor(cell * 0.85))}px 'Press Start 2P', monospace`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  for (const feedback of active) {
+    const age = now - feedback.startedAt;
+    const alpha =
+      age < 160
+        ? age / 160
+        : age > FEEDBACK_MS - 420
+          ? (FEEDBACK_MS - age) / 420
+          : 1;
+    ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+    ctx.fillStyle =
+      feedback.tone === 'good'
+        ? '#39ff14'
+        : feedback.tone === 'bad'
+          ? '#ff4d5d'
+          : '#ffb347';
+    ctx.fillText(
+      feedback.text,
+      width / 2,
+      cell * 3.2 + feedback.yOffset - age * 0.018,
+    );
+  }
+  ctx.restore();
+}
+
 type GameState = 'passive' | 'active';
 
 export default function HeroGame() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const spriteRef = useRef<SpriteInfo | null>(null);
+  const itemSheetRef = useRef<HTMLImageElement | null>(null);
   const prefersReducedMotion = usePrefersReducedMotion();
 
   useEffect(() => {
+    const img = new Image();
+    img.onload = () => {
+      itemSheetRef.current = img;
+    };
+    img.src = '/sprites/items.png';
+
     pickRandomSprite()
       .then((s) => {
         spriteRef.current = s;
@@ -1314,7 +1707,12 @@ export default function HeroGame() {
     let facing: 'left' | 'right' = 'right';
     let inputLeft = false;
     let inputRight = false;
+    let inputRun = false;
     let canJump = false;
+    let hasDoubleJump = false;
+    let hasSlam = false;
+    let doubleJumpAvailable = false;
+    let isSlamming = false;
     let squashUntil = 0;
     let playerLevel: 'sidewalk' | 'road' = 'sidewalk';
     let roadDropPx = 0;
@@ -1325,7 +1723,16 @@ export default function HeroGame() {
     let sidewalkGround: Matter.Body | null = null;
     let roadGround: Matter.Body | null = null;
     let brickLedge: Matter.Body | null = null;
+    let elevatedLedge: Matter.Body | null = null;
+    let billboardTop: Matter.Body | null = null;
     let billboardHitbox: Matter.Body | null = null;
+    let blueRing: Matter.Body | null = null;
+    let redRing: Matter.Body | null = null;
+    let blueRingCollected = false;
+    let redRingCollected = false;
+    let cameraShiftStartedAt = 0;
+    let cameraOffsetY = 0;
+    let floatingFeedbacks: FloatingFeedback[] = [];
     let interactiveObjects: InteractiveObject[] = [];
     const supportContacts = new Set<number>();
     const objectsById = new Map<number, InteractiveObject>();
@@ -1336,9 +1743,41 @@ export default function HeroGame() {
     let billboardPreviousText = BILLBOARD_MESSAGES[0];
     let billboardTargetText = BILLBOARD_MESSAGES[0];
     let billboardFaceFrame = 0;
+    let billboardHelpOpen = false;
+    let billboardScreenBroken = false;
     let lastBillboardHitAt = -Infinity;
 
     const cellOf = (h: number) => Math.max(3, Math.floor(h / 28));
+
+    const addFeedback = (
+      text: string,
+      tone: FloatingFeedback['tone'],
+      yOffset = 0,
+    ) => {
+      floatingFeedbacks.push({
+        text,
+        tone,
+        startedAt: performance.now(),
+        yOffset,
+      });
+    };
+
+    const startCameraShift = () => {
+      if (cameraShiftStartedAt !== 0) return;
+      cameraShiftStartedAt = performance.now();
+    };
+
+    const updateCameraOffset = (now: number) => {
+      if (cameraShiftStartedAt === 0) {
+        cameraOffsetY = 0;
+        return;
+      }
+      const cell = cellOf(height);
+      const target = cell * CAMERA_SHIFT_CELLS;
+      const t = Math.min(1, (now - cameraShiftStartedAt) / CAMERA_SHIFT_MS);
+      const eased = 1 - Math.pow(1 - t, 3);
+      cameraOffsetY = target * eased;
+    };
 
     const getBillboardRenderOptions = (now: number) => {
       if (billboardPhase === 'idle') {
@@ -1347,6 +1786,8 @@ export default function HeroGame() {
           glitching: false,
           noiseSeed: now,
           showControls: state === 'active',
+          helpOpen: billboardHelpOpen,
+          screenBroken: billboardScreenBroken,
           faceFrame: billboardFaceFrame,
         };
       }
@@ -1358,7 +1799,8 @@ export default function HeroGame() {
         Math.floor(deletingAt / BILLBOARD_DELETE_MS_PER_CHAR),
       );
       const typingAt =
-        deletingAt - billboardPreviousText.length * BILLBOARD_DELETE_MS_PER_CHAR;
+        deletingAt -
+        billboardPreviousText.length * BILLBOARD_DELETE_MS_PER_CHAR;
       const typeChars = Math.max(
         0,
         Math.min(
@@ -1368,7 +1810,10 @@ export default function HeroGame() {
       );
       const message =
         deleteChars < billboardPreviousText.length
-          ? billboardPreviousText.slice(0, billboardPreviousText.length - deleteChars)
+          ? billboardPreviousText.slice(
+              0,
+              billboardPreviousText.length - deleteChars,
+            )
           : billboardTargetText.slice(0, typeChars);
 
       if (
@@ -1388,6 +1833,8 @@ export default function HeroGame() {
         glitching: t < BILLBOARD_GLITCH_MS,
         noiseSeed: now,
         showControls: state === 'active',
+        helpOpen: billboardHelpOpen,
+        screenBroken: billboardScreenBroken,
         faceFrame:
           t < BILLBOARD_GLITCH_MS
             ? 2
@@ -1421,6 +1868,13 @@ export default function HeroGame() {
 
     const drawActiveFrame = (now: number) => {
       const cell = cellOf(height);
+      updateCameraOffset(now);
+      if (cameraOffsetY > 0) {
+        ctx.fillStyle = palette.sky;
+        ctx.fillRect(0, 0, width, height);
+      }
+      ctx.save();
+      if (cameraOffsetY > 0) ctx.translate(0, cameraOffsetY);
       drawBackground(
         ctx,
         width,
@@ -1431,10 +1885,35 @@ export default function HeroGame() {
         true,
         getBillboardRenderOptions(now),
       );
+      if (elevatedLedge && cameraShiftStartedAt !== 0) {
+        drawElevatedLedge(ctx, elevatedLedge, cell, palette);
+      }
       for (const obj of interactiveObjects) {
         drawInteractiveObject(ctx, obj, palette, daytime, cell, now);
       }
-      drawTaglineSeparators(ctx, interactiveObjects, daytime, cell);
+      drawTaglineSeparators(ctx, interactiveObjects, daytime);
+      if (blueRing) {
+        drawRingPickup(
+          ctx,
+          blueRing,
+          cell,
+          '#4db5ff',
+          blueRingCollected,
+          itemSheetRef.current,
+          RING_SPRITES.blue,
+        );
+      }
+      if (redRing && cameraShiftStartedAt !== 0) {
+        drawRingPickup(
+          ctx,
+          redRing,
+          cell,
+          '#ff4d5d',
+          redRingCollected,
+          itemSheetRef.current,
+          RING_SPRITES.red,
+        );
+      }
       if (spriteRef.current && playerBody) {
         const playerHeight = cell * 4;
         drawSprite(
@@ -1451,17 +1930,18 @@ export default function HeroGame() {
           },
         );
       }
+      ctx.restore();
+      floatingFeedbacks = floatingFeedbacks.filter(
+        (feedback) => now - feedback.startedAt < FEEDBACK_MS,
+      );
+      drawFeedback(ctx, floatingFeedbacks, width, cell, now);
       drawScanlines(ctx, width, height, palette.scanline);
     };
 
     const stepPhysics = (dt: number) => {
       if (!engine || !playerBody) return;
-      const vx =
-        inputRight === inputLeft
-          ? 0
-          : inputRight
-            ? PLAYER_WALK_SPEED
-            : -PLAYER_WALK_SPEED;
+      const speed = inputRun ? PLAYER_RUN_SPEED : PLAYER_WALK_SPEED;
+      const vx = inputRight === inputLeft ? 0 : inputRight ? speed : -speed;
       if (vx !== 0) facing = vx > 0 ? 'right' : 'left';
       Body.setVelocity(playerBody, { x: vx, y: playerBody.velocity.y });
 
@@ -1486,6 +1966,8 @@ export default function HeroGame() {
       body === sidewalkGround ||
       body === roadGround ||
       body === brickLedge ||
+      body === elevatedLedge ||
+      body === billboardTop ||
       objectsById.has(body.id);
 
     const getPlayerSupportBody = (pair: Matter.Pair) => {
@@ -1524,6 +2006,10 @@ export default function HeroGame() {
       }
       supportContacts.add(support.id);
       canJump = true;
+      doubleJumpAvailable = hasDoubleJump;
+      isSlamming = false;
+      const supportObj = objectsById.get(support.id);
+      if (supportObj?.kind === 'tagline') startCameraShift();
     };
 
     const removeSupportContact = (pair: Matter.Pair) => {
@@ -1540,10 +2026,9 @@ export default function HeroGame() {
     };
 
     /**
-     * Advances `target`'s state machine when struck by the player or by
-     * another already-falling object (cascade — PRD "Interactive Objects →
-     * 1, Cascade"). `pinned` → `damaged` on first hit, `damaged` → `fallen`
-     * (dynamic, gravity takes over) on the second.
+     * Crumbles a target only when struck by a slam-speed player impact.
+     * Ordinary walking, landing, and object cascades remain safe for the
+     * climb route; the endgame destruction is deliberately ability-gated.
      */
     const handleObjectImpact = (
       impactor: Matter.Body,
@@ -1554,21 +2039,67 @@ export default function HeroGame() {
       if (!obj || !obj.destructible || obj.state === 'fallen') return;
 
       const isPlayerImpact = impactor === playerBody;
-      const isCascadeImpact =
-        !impactor.isStatic && objectsById.has(impactor.id);
-      if (!isPlayerImpact && !isCascadeImpact) return;
+      if (
+        !isPlayerImpact ||
+        !playerBody ||
+        !isSlamming ||
+        playerBody.velocity.y < SLAM_IMPACT_MIN_VELOCITY
+      ) {
+        return;
+      }
 
-      if (obj.state === 'pinned') {
-        obj.state = 'damaged';
-        obj.hitAt = now;
-      } else if (obj.state === 'damaged') {
+      if (obj.kind === 'wordmarkPlate') {
         obj.state = 'fallen';
         obj.hitAt = now;
-        Body.setStatic(obj.body, false);
-        Body.setAngularVelocity(
-          obj.body,
-          (Math.random() - 0.5) * FALL_ANGULAR_VELOCITY,
-        );
+        if (engine) Composite.remove(engine.world, obj.body);
+        objectsById.delete(obj.body.id);
+        Body.setVelocity(playerBody, { x: playerBody.velocity.x, y: -4 });
+        isSlamming = false;
+        return;
+      }
+
+      obj.state = 'fallen';
+      obj.hitAt = now;
+      Body.setStatic(obj.body, false);
+      Body.setVelocity(obj.body, {
+        x: (Math.random() - 0.5) * 5,
+        y: Math.max(2, playerBody.velocity.y * 0.35),
+      });
+      Body.setAngularVelocity(
+        obj.body,
+        (Math.random() - 0.5) * FALL_ANGULAR_VELOCITY * 2.5,
+      );
+      Body.setVelocity(playerBody, { x: playerBody.velocity.x, y: -4 });
+      isSlamming = false;
+    };
+
+    const handleRingPickup = (pair: Matter.Pair) => {
+      if (!playerBody) return;
+      const bodies = [pair.bodyA, pair.bodyB];
+      if (
+        blueRing &&
+        !blueRingCollected &&
+        bodies.includes(playerBody) &&
+        bodies.includes(blueRing)
+      ) {
+        blueRingCollected = true;
+        hasDoubleJump = true;
+        doubleJumpAvailable = true;
+        addFeedback('+ Double Jump', 'good');
+      }
+      if (
+        redRing &&
+        !redRingCollected &&
+        bodies.includes(playerBody) &&
+        bodies.includes(redRing)
+      ) {
+        redRingCollected = true;
+        hasDoubleJump = false;
+        doubleJumpAvailable = false;
+        hasSlam = true;
+        addFeedback('- Double Jump', 'bad', 0);
+        addFeedback('+ Slam', 'good', cellOf(height) * 1.15);
+        addFeedback("Don't fall!", 'warn', cellOf(height) * 2.3);
       }
     };
 
@@ -1578,6 +2109,22 @@ export default function HeroGame() {
         (pair.bodyA === playerBody && pair.bodyB === billboardHitbox) ||
         (pair.bodyB === playerBody && pair.bodyA === billboardHitbox);
       if (!hitBillboard) return;
+
+      if (
+        isSlamming &&
+        playerBody.velocity.y >= SLAM_IMPACT_MIN_VELOCITY &&
+        !billboardScreenBroken
+      ) {
+        billboardScreenBroken = true;
+        billboardPhase = 'idle';
+        billboardCurrentText = '';
+        billboardTargetText = '';
+        billboardFaceFrame = 2;
+        billboardHelpOpen = false;
+        Body.setVelocity(playerBody, { x: playerBody.velocity.x, y: -4 });
+        isSlamming = false;
+        return;
+      }
 
       const cell = cellOf(height);
       const billboard = getBillboardGeometry(width, cell);
@@ -1594,6 +2141,7 @@ export default function HeroGame() {
       for (const pair of event.pairs) {
         addSupportContact(pair, now);
         handleBillboardImpact(pair, now);
+        handleRingPickup(pair);
         handleObjectImpact(pair.bodyA, pair.bodyB, now);
         handleObjectImpact(pair.bodyB, pair.bodyA, now);
       }
@@ -1633,7 +2181,20 @@ export default function HeroGame() {
       sidewalkGround = null;
       roadGround = null;
       brickLedge = null;
+      elevatedLedge = null;
+      billboardTop = null;
       billboardHitbox = null;
+      blueRing = null;
+      redRing = null;
+      blueRingCollected = false;
+      redRingCollected = false;
+      hasDoubleJump = false;
+      hasSlam = false;
+      doubleJumpAvailable = false;
+      isSlamming = false;
+      cameraShiftStartedAt = 0;
+      cameraOffsetY = 0;
+      floatingFeedbacks = [];
       interactiveObjects = [];
       supportContacts.clear();
       objectsById.clear();
@@ -1644,6 +2205,8 @@ export default function HeroGame() {
       billboardPreviousText = BILLBOARD_MESSAGES[0];
       billboardTargetText = BILLBOARD_MESSAGES[0];
       billboardFaceFrame = 0;
+      billboardHelpOpen = false;
+      billboardScreenBroken = false;
       lastBillboardHitAt = -Infinity;
       playerLevel = 'sidewalk';
 
@@ -1653,6 +2216,7 @@ export default function HeroGame() {
 
       inputLeft = false;
       inputRight = false;
+      inputRun = false;
       drawPassiveFrame();
     };
 
@@ -1672,14 +2236,35 @@ export default function HeroGame() {
           break;
         case ' ':
           event.preventDefault();
-          if (!event.repeat && canJump && playerBody) {
-            Body.setVelocity(playerBody, {
-              x: playerBody.velocity.x,
-              y: -PLAYER_JUMP_VELOCITY,
-            });
-            supportContacts.clear();
-            canJump = false;
+          if (!event.repeat && playerBody) {
+            if (canJump) {
+              Body.setVelocity(playerBody, {
+                x: playerBody.velocity.x,
+                y: -PLAYER_JUMP_VELOCITY,
+              });
+              bumpObjectsAbovePlayer();
+              supportContacts.clear();
+              canJump = false;
+              doubleJumpAvailable = hasDoubleJump;
+              isSlamming = false;
+            } else if (hasDoubleJump && doubleJumpAvailable) {
+              Body.setVelocity(playerBody, {
+                x: playerBody.velocity.x,
+                y: -PLAYER_DOUBLE_JUMP_VELOCITY,
+              });
+              doubleJumpAvailable = false;
+            } else if (hasSlam && !isSlamming) {
+              Body.setVelocity(playerBody, {
+                x: playerBody.velocity.x,
+                y: PLAYER_SLAM_VELOCITY,
+              });
+              isSlamming = true;
+            }
           }
+          break;
+        case 'Shift':
+          event.preventDefault();
+          inputRun = true;
           break;
         case 'ArrowDown':
         case 's':
@@ -1755,6 +2340,9 @@ export default function HeroGame() {
         case 'A':
           inputLeft = false;
           break;
+        case 'Shift':
+          inputRun = false;
+          break;
         default:
           break;
       }
@@ -1762,6 +2350,29 @@ export default function HeroGame() {
 
     const onDocumentPointerDown = (event: PointerEvent) => {
       if (event.target !== canvas) deactivate();
+    };
+
+    const bumpObjectsAbovePlayer = () => {
+      if (!playerBody) return;
+      const cell = cellOf(height);
+      for (const obj of interactiveObjects) {
+        if (obj.body.isStatic) continue;
+        const horizontallyClose =
+          obj.body.bounds.max.x > playerBody.bounds.min.x - cell * 0.4 &&
+          obj.body.bounds.min.x < playerBody.bounds.max.x + cell * 0.4;
+        const justAbove =
+          obj.body.bounds.max.y >= playerBody.bounds.min.y - cell * 0.7 &&
+          obj.body.position.y < playerBody.position.y;
+        if (!horizontallyClose || !justAbove) continue;
+        Body.applyForce(obj.body, obj.body.position, {
+          x: (obj.body.position.x - playerBody.position.x) * 0.0007,
+          y: -0.035 * obj.body.mass,
+        });
+        Body.setAngularVelocity(
+          obj.body,
+          (obj.body.position.x >= playerBody.position.x ? 1 : -1) * 0.08,
+        );
+      }
     };
 
     const activate = () => {
@@ -1821,6 +2432,20 @@ export default function HeroGame() {
         brickLedgeThickness,
         { isStatic: true, friction: PLAYER_FRICTION },
       );
+      elevatedLedge = Bodies.rectangle(
+        Math.max(cell * 15, width * 0.3),
+        -cell * 1.6,
+        cell * 13,
+        Math.max(5, cell * 0.8),
+        { isStatic: true, friction: PLAYER_FRICTION },
+      );
+      billboardTop = Bodies.rectangle(
+        billboard.bbX + billboard.bbWidth / 2,
+        billboard.bbY - billboard.frameWidth / 2,
+        billboard.bbWidth + billboard.frameWidth * 2,
+        Math.max(5, billboard.frameWidth),
+        { isStatic: true, friction: PLAYER_FRICTION },
+      );
       billboardHitbox = Bodies.rectangle(
         billboard.bbX + billboard.bbWidth / 2,
         billboard.bbY + billboard.bbHeight / 2,
@@ -1830,6 +2455,26 @@ export default function HeroGame() {
           isStatic: true,
           isSensor: true,
           label: 'billboard-screen',
+        },
+      );
+      blueRing = Bodies.circle(
+        billboard.brickX + billboard.brickWidth - cell * 1.6,
+        billboard.brickTop - cell * 1.1,
+        Math.max(6, cell * 0.55),
+        {
+          isStatic: true,
+          isSensor: true,
+          label: 'blue-ring',
+        },
+      );
+      redRing = Bodies.circle(
+        elevatedLedge.position.x + cell * 4.5,
+        elevatedLedge.position.y - cell * 1.1,
+        Math.max(6, cell * 0.55),
+        {
+          isStatic: true,
+          isSensor: true,
+          label: 'red-ring',
         },
       );
 
@@ -1843,13 +2488,18 @@ export default function HeroGame() {
       Body.setInertia(playerBody, Infinity);
 
       const playerMass = playerBody.mass;
-      const heroLayout = computeHeroLayout(ctx, cell);
+      const heroLayout = computeHeroLayout(ctx);
       interactiveObjects = [
         ...heroLayout.tagline.map((layout) =>
-          createInteractiveObject(layout, 'tagline', playerMass, false),
+          createInteractiveObject(layout, 'tagline', playerMass),
+        ),
+        createInteractiveObject(
+          heroLayout.wordmarkPlate,
+          'wordmarkPlate',
+          playerMass * 2,
         ),
         ...heroLayout.wordmark.map((layout) =>
-          createInteractiveObject(layout, 'wordmark', playerMass * 2, false),
+          createInteractiveObject(layout, 'wordmark', playerMass * 2),
         ),
         ...heroLayout.badges.map((layout) =>
           createInteractiveObject(
@@ -1874,7 +2524,11 @@ export default function HeroGame() {
         leftWall,
         rightWall,
         brickLedge,
+        elevatedLedge,
+        billboardTop,
         billboardHitbox,
+        blueRing,
+        redRing,
         playerBody,
         ...interactiveObjects.map((obj) => obj.body),
       ]);
@@ -1885,7 +2539,18 @@ export default function HeroGame() {
       facing = 'right';
       inputLeft = false;
       inputRight = false;
+      inputRun = false;
       canJump = false;
+      hasDoubleJump = false;
+      hasSlam = false;
+      doubleJumpAvailable = false;
+      isSlamming = false;
+      blueRingCollected = false;
+      redRingCollected = false;
+      cameraShiftStartedAt = 0;
+      cameraOffsetY = 0;
+      floatingFeedbacks = [];
+      billboardScreenBroken = false;
       supportContacts.clear();
       playerLevel = 'sidewalk';
       roadDropPx = roadDrop;
@@ -1893,6 +2558,7 @@ export default function HeroGame() {
       physicsAccumulator = 0;
       lastPhysicsTime = 0;
       squashUntil = 0;
+      billboardHelpOpen = false;
 
       window.addEventListener('keydown', onKeyDown);
       window.addEventListener('keyup', onKeyUp);
@@ -1900,13 +2566,63 @@ export default function HeroGame() {
     };
 
     const onCanvasClick = (event: MouseEvent) => {
+      if (state === 'active') {
+        const rect = canvas.getBoundingClientRect();
+        const point = {
+          x: event.clientX - rect.left,
+          y: event.clientY - rect.top - cameraOffsetY,
+        };
+        const cell = cellOf(height);
+        const billboard = getBillboardGeometry(width, cell);
+        const helpButton = getBillboardHelpButtonBounds(
+          billboard.bbX,
+          billboard.bbY,
+          billboard.bbWidth,
+          cell,
+        );
+        const isHelpButton =
+          point.x >= helpButton.x &&
+          point.x <= helpButton.x + helpButton.size &&
+          point.y >= helpButton.y &&
+          point.y <= helpButton.y + helpButton.size;
+
+        if (isHelpButton) {
+          event.preventDefault();
+          billboardHelpOpen = !billboardHelpOpen;
+        }
+        return;
+      }
+
       if (state === 'passive') {
         event.preventDefault();
         activate();
       }
     };
 
-    const onCanvasPointerMove = () => {
+    const onCanvasPointerMove = (event: PointerEvent) => {
+      if (state === 'active') {
+        const rect = canvas.getBoundingClientRect();
+        const point = {
+          x: event.clientX - rect.left,
+          y: event.clientY - rect.top - cameraOffsetY,
+        };
+        const cell = cellOf(height);
+        const billboard = getBillboardGeometry(width, cell);
+        const helpButton = getBillboardHelpButtonBounds(
+          billboard.bbX,
+          billboard.bbY,
+          billboard.bbWidth,
+          cell,
+        );
+        const isHelpButton =
+          point.x >= helpButton.x &&
+          point.x <= helpButton.x + helpButton.size &&
+          point.y >= helpButton.y &&
+          point.y <= helpButton.y + helpButton.size;
+        canvas.style.cursor = isHelpButton ? 'pointer' : '';
+        return;
+      }
+
       canvas.style.cursor = state === 'passive' ? 'pointer' : '';
     };
 
