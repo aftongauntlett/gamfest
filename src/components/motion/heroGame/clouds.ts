@@ -6,11 +6,13 @@ import {
 } from './constants';
 import { drawFlatCloudPlatform } from './pickupsAndFx';
 
-const { Bodies } = Matter;
+const { Bodies, Body, Composite } = Matter;
 
 export interface CloudPlatform {
   body: Matter.Body;
   brokenUntil: number;
+  passthroughUntil: number;
+  inWorld: boolean;
 }
 
 export function createCloudPlatform(
@@ -27,6 +29,8 @@ export function createCloudPlatform(
       label: 'cloud-platform',
     }),
     brokenUntil: 0,
+    passthroughUntil: 0,
+    inWorld: true,
   };
 }
 
@@ -42,29 +46,52 @@ export function drawCloudPlatform(
 
 export function breakCloudPlatform(cloud: CloudPlatform, now: number) {
   cloud.brokenUntil = now + CLOUD_REPAIR_MS;
-  cloud.body.isSensor = true;
+  Body.set(cloud.body, 'isSensor', true);
+}
+
+export function dropThroughCloudPlatform(
+  cloud: CloudPlatform,
+  now: number,
+  durationMs: number,
+) {
+  cloud.passthroughUntil = Math.max(cloud.passthroughUntil, now + durationMs);
+  Body.set(cloud.body, 'isSensor', true);
 }
 
 export function updateCloudPlatform(
   cloud: CloudPlatform,
+  engine: Matter.Engine,
   playerBody: Matter.Body,
   now: number,
   cell: number,
 ) {
-  if (now < cloud.brokenUntil) {
-    cloud.body.isSensor = true;
+  const temporarilyPassable =
+    now < cloud.brokenUntil || now < cloud.passthroughUntil;
+  if (temporarilyPassable) {
+    Body.set(cloud.body, 'isSensor', true);
+    if (cloud.inWorld) {
+      Composite.remove(engine.world, cloud.body);
+      cloud.inWorld = false;
+    }
     return;
   }
 
   if (cloud.brokenUntil !== 0) {
     cloud.brokenUntil = 0;
   }
+  if (cloud.passthroughUntil !== 0) {
+    cloud.passthroughUntil = 0;
+  }
 
   const horizontalOverlap =
     playerBody.bounds.max.x > cloud.body.bounds.min.x + cell * 0.15 &&
     playerBody.bounds.min.x < cloud.body.bounds.max.x - cell * 0.15;
   if (!horizontalOverlap) {
-    cloud.body.isSensor = false;
+    Body.set(cloud.body, 'isSensor', false);
+    if (!cloud.inWorld) {
+      Composite.add(engine.world, cloud.body);
+      cloud.inWorld = true;
+    }
     return;
   }
 
@@ -72,7 +99,11 @@ export function updateCloudPlatform(
     playerBody.position.y < cloud.body.position.y &&
     playerBody.velocity.y >= -0.5;
 
-  cloud.body.isSensor = !playerSafelyAbove;
+  Body.set(cloud.body, 'isSensor', !playerSafelyAbove);
+  if (!cloud.inWorld) {
+    Composite.add(engine.world, cloud.body);
+    cloud.inWorld = true;
+  }
 }
 
 export function findCloudPlatform(clouds: CloudPlatform[], body: Matter.Body) {

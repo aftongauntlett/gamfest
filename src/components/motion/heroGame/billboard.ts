@@ -307,7 +307,7 @@ export function getBillboardHelpButtonBounds(
 }
 
 const HELP_KEY_ROWS: ReadonlyArray<readonly [string, string]> = [
-  ['MOVE', 'A/D ←→'],
+  ['MOVE', 'A/D/W/S'],
   ['SPRINT', 'SHIFT'],
   ['JUMP', 'SPACE'],
   ['DOUBLE JUMP', 'SPACE x2'],

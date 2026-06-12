@@ -104,10 +104,32 @@ export function drawRingPickup(
   ctx.restore();
 }
 
+function snapToPixel(value: number, pixel: number) {
+  return Math.round(value / pixel) * pixel;
+}
+
+function drawPixelCloudBlock(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  fill: string,
+  pixel: number,
+) {
+  ctx.fillStyle = fill;
+  ctx.fillRect(
+    snapToPixel(x, pixel),
+    snapToPixel(y, pixel),
+    snapToPixel(width, pixel),
+    snapToPixel(height, pixel),
+  );
+}
+
 /**
- * Renders a body as a "kinda flat" cloud platform: a flat-bottomed base
- * rectangle topped with a row of overlapping rounded puffs. Generic over
- * size/position so it can be reused for additional cloud platforms later.
+ * Renders a cloud platform around the physics body. The collision remains a
+ * simple flat rectangle, but the art is made from chunky pixel blocks so it
+ * reads like an 8-bit platform instead of anti-aliased circles.
  */
 export function drawFlatCloudPlatform(
   ctx: CanvasRenderingContext2D,
@@ -122,55 +144,78 @@ export function drawFlatCloudPlatform(
   const height = body.bounds.max.y - body.bounds.min.y;
   const cloudColor = daytime ? '#ffffff' : '#c7c2e6';
   const puffShade = daytime ? '#eaf2fb' : '#aea7d4';
+  const bellyShade = daytime ? '#cfe0ef' : '#8f88bf';
+  const highlight = daytime ? '#f8fcff' : '#ded9ff';
   const broken = now < brokenUntil;
   const repairProgress =
     brokenUntil > 0
       ? Math.max(0, Math.min(1, 1 - (brokenUntil - now) / CLOUD_REPAIR_MS))
       : 1;
+  const pixel = Math.max(3, Math.floor(cell * 0.22));
+  const breakSpread = broken ? (1 - repairProgress) * cell * 1.5 : 0;
+  const visualHeight = Math.max(cell * 1.9, height * 3);
+  const baseY = visualHeight * 0.08;
+  const blocks = [
+    { x: -0.42, y: -0.02, w: 0.84, h: 0.36, c: cloudColor },
+    { x: -0.36, y: 0.22, w: 0.74, h: 0.18, c: bellyShade },
+    { x: -0.28, y: 0.34, w: 0.56, h: 0.12, c: bellyShade },
+    { x: -0.5, y: 0.1, w: 0.18, h: 0.2, c: puffShade },
+    { x: 0.34, y: 0.08, w: 0.2, h: 0.24, c: puffShade },
+    { x: -0.34, y: -0.28, w: 0.22, h: 0.28, c: cloudColor },
+    { x: -0.14, y: -0.4, w: 0.28, h: 0.4, c: highlight },
+    { x: 0.1, y: -0.32, w: 0.24, h: 0.32, c: cloudColor },
+    { x: 0.3, y: -0.22, w: 0.22, h: 0.28, c: cloudColor },
+    { x: -0.2, y: 0.06, w: 0.22, h: 0.14, c: puffShade },
+    { x: 0.04, y: 0.08, w: 0.28, h: 0.16, c: puffShade },
+  ];
 
   ctx.save();
-  ctx.translate(x - width / 2, y - height / 2);
+  ctx.translate(x, y);
 
-  if (broken) {
-    ctx.globalAlpha = 0.35 + repairProgress * 0.25;
-  }
-  ctx.fillStyle = cloudColor;
   if (!broken) {
-    ctx.fillRect(0, 0, width, height);
-  } else {
-    const shardCount = 5;
-    const shardWidth = width / shardCount;
-    for (let i = 0; i < shardCount; i += 1) {
-      const drift = Math.sin(now * 0.008 + body.id + i) * cell * 0.18;
-      const gap = cell * 0.22;
-      ctx.fillRect(
-        i * shardWidth + gap / 2 + drift,
-        cell * 0.16 + Math.abs(drift) * 0.25,
-        Math.max(2, shardWidth - gap),
-        Math.max(2, height * 0.42),
+    for (const block of blocks) {
+      drawPixelCloudBlock(
+        ctx,
+        block.x * width,
+        baseY + block.y * visualHeight,
+        block.w * width,
+        block.h * visualHeight,
+        block.c,
+        pixel,
       );
     }
-  }
-
-  const puffRadius = cell * 1.3;
-  const step = puffRadius * 1.35;
-  let puffIndex = 0;
-  for (let px = step / 2; px < width; px += step) {
-    const radius = puffIndex % 2 === 0 ? puffRadius : puffRadius * 0.78;
-    const spread = broken
-      ? (1 - repairProgress) *
-        cell *
-        (puffIndex % 2 === 0 ? -0.85 : 0.85) *
-        (1 + puffIndex * 0.18)
-      : 0;
-    const lift = broken
-      ? Math.sin(now * 0.01 + body.id + puffIndex) * cell * 0.28
-      : 0;
-    ctx.fillStyle = puffIndex % 2 === 0 ? cloudColor : puffShade;
-    ctx.beginPath();
-    ctx.arc(px + spread, lift, radius, Math.PI, Math.PI * 2);
-    ctx.fill();
-    puffIndex += 1;
+  } else {
+    ctx.globalAlpha = 0.42 + repairProgress * 0.5;
+    blocks.forEach((block, index) => {
+      const side = block.x < 0 ? -1 : block.x > 0.12 ? 1 : index % 2 ? -1 : 1;
+      const lift = Math.sin(now * 0.012 + body.id + index) * pixel;
+      drawPixelCloudBlock(
+        ctx,
+        block.x * width + side * breakSpread * (0.35 + index * 0.06),
+        baseY + block.y * visualHeight + lift + breakSpread * 0.12,
+        block.w * width * (0.72 + repairProgress * 0.28),
+        block.h * visualHeight,
+        block.c,
+        pixel,
+      );
+    });
+    for (let i = 0; i < 14; i += 1) {
+      const side = i % 2 === 0 ? -1 : 1;
+      const distance = breakSpread * (0.65 + (i % 5) * 0.16);
+      const drift = Math.sin(now * 0.016 + i + body.id) * pixel;
+      drawPixelCloudBlock(
+        ctx,
+        side * distance + drift,
+        baseY +
+          ((i % 4) - 1.5) * pixel * 1.4 -
+          breakSpread * (0.1 + (i % 3) * 0.08),
+        pixel * (1 + (i % 2)),
+        pixel,
+        i % 3 === 0 ? highlight : i % 3 === 1 ? cloudColor : bellyShade,
+        pixel,
+      );
+    }
+    ctx.globalAlpha = 1;
   }
 
   ctx.restore();

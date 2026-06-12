@@ -13,10 +13,12 @@ export function getStreetLevels(baseline: number, cell: number) {
 export const STARS = Array.from({ length: 30 }, (_, i) => ({
   xFrac: 0.48 + pseudoRandom(i * 17.391 + 1.1) * 0.52,
   yFrac: pseudoRandom(i * 11.721 + 2.3) * 0.86,
-  size: pseudoRandom(i * 7.153) > 0.82 ? 2 : 1,
-  alpha: 0.1 + pseudoRandom(i * 5.317) * 0.25,
+  size:
+    pseudoRandom(i * 7.153) > 0.92 ? 3 : pseudoRandom(i * 7.153) > 0.68 ? 2 : 1,
+  alpha: 0.22 + pseudoRandom(i * 5.317) * 0.34,
   phase: pseudoRandom(i * 13.891) * Math.PI * 2,
   speed: 0.25 + pseudoRandom(i * 3.741) * 0.75,
+  cross: pseudoRandom(i * 2.917 + 8.4) > 0.76,
 }));
 
 export function drawStars(
@@ -26,15 +28,35 @@ export function drawStars(
   elapsed: number,
 ) {
   STARS.forEach((star) => {
-    const twinkle = Math.sin(elapsed * 0.001 * star.speed + star.phase);
-    ctx.globalAlpha = star.alpha * (0.55 + twinkle * 0.45);
-    ctx.fillStyle = '#d8e4ff';
-    ctx.fillRect(
-      Math.round(star.xFrac * width),
-      Math.round(star.yFrac * baseline),
-      star.size,
-      star.size,
+    const twinklePeriod = 7200;
+    const twinkleWindow = 620;
+    const twinkleSeed = Math.floor(elapsed / twinklePeriod);
+    const twinkleIndex = Math.floor(
+      pseudoRandom(twinkleSeed * 19.137 + 4.2) * STARS.length,
     );
+    const twinkleAge = elapsed % twinklePeriod;
+    const twinkleActive =
+      star === STARS[twinkleIndex] && twinkleAge < twinkleWindow;
+    const twinkle = twinkleActive
+      ? Math.sin((twinkleAge / twinkleWindow) * Math.PI)
+      : 0;
+    const starX = Math.round(star.xFrac * width);
+    const starY = Math.round(star.yFrac * baseline);
+    const glowSize = star.size + (twinkle > 0.75 ? 2 : twinkle > 0 ? 1 : 0);
+
+    ctx.globalAlpha = star.alpha + twinkle * 0.65;
+    ctx.fillStyle = '#d8e4ff';
+    ctx.fillRect(starX, starY, star.size, star.size);
+    if (star.cross && star.size > 1) {
+      ctx.globalAlpha = star.alpha * 0.65;
+      ctx.fillRect(starX - 1, starY, star.size + 2, 1);
+      ctx.fillRect(starX, starY - 1, 1, star.size + 2);
+    }
+    if (twinkle > 0.35) {
+      ctx.globalAlpha = twinkle * 0.5;
+      ctx.fillRect(starX - 1, starY, glowSize, 1);
+      ctx.fillRect(starX, starY - 1, 1, glowSize);
+    }
   });
   ctx.globalAlpha = 1;
 }

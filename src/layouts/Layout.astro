@@ -1,12 +1,10 @@
 ---
-import { getImage } from 'astro:assets';
 import '@fontsource/vt323/400.css';
 import '@fontsource/atkinson-hyperlegible/400.css';
 import '@fontsource/atkinson-hyperlegible/700.css';
 import '@fontsource/press-start-2p/400.css';
 import '../styles/global.css';
 import LevelSelectNav from '../components/motion/LevelSelectNav';
-import ogImageSource from '../assets/images/gamfest-billboard.jpg';
 
 export interface Props {
   title: string;
@@ -25,17 +23,9 @@ const levels = [
   { href: '#contact', label: 'Contact' },
 ];
 
-// Social share preview — the GAM[fest] billboard, cropped to the standard
-// 1200x630 OG/Twitter card ratio and framed on the wordmark up top.
-const ogImage = await getImage({
-  src: ogImageSource,
-  width: 1200,
-  height: 630,
-  fit: 'cover',
-  position: 'top',
-  format: 'jpg',
-});
-const ogImageUrl = new URL(ogImage.src, Astro.site);
+// Social share preview: keep this as a stable public URL so Discord and other
+// crawlers can fetch it from preview deployments as well as production.
+const ogImageUrl = new URL('/gamfest-og.png', Astro.site);
 const canonicalUrl = new URL(Astro.url.pathname, Astro.site);
 ---
 
@@ -57,11 +47,12 @@ const canonicalUrl = new URL(Astro.url.pathname, Astro.site);
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <meta property="og:image" content={ogImageUrl} />
-    <meta property="og:image:width" content="1200" />
-    <meta property="og:image:height" content="630" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:width" content="1234" />
+    <meta property="og:image:height" content="688" />
     <meta
       property="og:image:alt"
-      content="The GAM[fest] billboard: a five-story LED display showing the GAM[fest] logo above The Legend of Zelda title screen, against a clear blue sky."
+      content="A retro-styled GAM[fest] hero scene with the festival logo, pixel skyline, and arcade billboard."
     />
 
     <!-- Twitter card -->

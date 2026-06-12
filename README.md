@@ -1,5 +1,7 @@
 # GAM[fest]
 
+![GAMfest hero preview](src/assets/images/gamfest-hero.png)
+
 Source for [gamfest.org](https://gamfest.org/) — the recap site for GAM[fest], a Baltimore
 community festival celebrating Games | Art | Music, built around playing classic videogames
 live on a giant LED billboard. A freelance build for the event organizer: recap GAM[fest] #1

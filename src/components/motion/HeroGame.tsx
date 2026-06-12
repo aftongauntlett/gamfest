@@ -4,6 +4,7 @@ import { usePrefersReducedMotion } from '../../lib/usePrefersReducedMotion';
 import {
   drawBackground,
   drawScanlines,
+  drawStars,
   getStreetLevels,
 } from './heroGame/background';
 import {
@@ -80,6 +81,7 @@ import {
   breakCloudPlatform,
   createCloudPlatform,
   drawCloudPlatform,
+  dropThroughCloudPlatform,
   findCloudPlatform,
   updateCloudPlatform,
   type CloudPlatform,
@@ -201,7 +203,11 @@ export default function HeroGame() {
     const BILLBOARD_ARROW_MESSAGE = 2;
     const BILLBOARD_SLAM_MESSAGE = 3;
     const BRICK_LEDGE_DROP_MS = 360;
+    const CLOUD_DROP_THROUGH_MS = 700;
     const WORDMARK_PLATE_UNLOCK_DELAY_MS = 420;
+    const testSpawn = new URLSearchParams(window.location.search).get(
+      'heroSpawn',
+    );
 
     const addFeedback = (
       text: string,
@@ -235,8 +241,18 @@ export default function HeroGame() {
       if (playerNearSkyRoute) {
         const minimumSkyShift = cell * CAMERA_SHIFT_CELLS;
         const headroomShift = cell * 2.8 - playerTop;
+        const highestCloudTop =
+          cloudPlatforms.length > 0
+            ? Math.min(
+                ...cloudPlatforms.map((cloud) => cloud.body.bounds.min.y),
+              )
+            : playerTop;
+        const skyRouteMaxShift = Math.max(
+          minimumSkyShift,
+          -highestCloudTop + cell * 6,
+        );
         cameraTarget = Math.min(
-          height * 0.48,
+          skyRouteMaxShift,
           Math.max(minimumSkyShift, headroomShift),
         );
       } else if (playerTop > cell * CAMERA_SHIFT_DOWN_TRIGGER_CELLS) {
@@ -427,6 +443,7 @@ export default function HeroGame() {
       if (cameraOffsetY > 0) {
         ctx.fillStyle = palette.sky;
         ctx.fillRect(0, 0, width, height);
+        if (!daytime) drawStars(ctx, width, height, elapsed);
       }
       ctx.save();
       if (cameraOffsetY > 0) ctx.translate(0, cameraOffsetY);
@@ -527,10 +544,10 @@ export default function HeroGame() {
     };
 
     const updateCloudPlatforms = (now: number) => {
-      if (!playerBody) return;
+      if (!engine || !playerBody) return;
       const cell = cellOf(height);
       for (const cloud of cloudPlatforms) {
-        updateCloudPlatform(cloud, playerBody, now, cell);
+        updateCloudPlatform(cloud, engine, playerBody, now, cell);
         if (cloud.body.isSensor) supportContacts.delete(cloud.body.id);
       }
       canJump = supportContacts.size > 0;
@@ -573,6 +590,26 @@ export default function HeroGame() {
         horizontallyOverlapping &&
         bodyAboveLedge &&
         playerBody.velocity.y >= -0.5
+      );
+    };
+
+    const getPlayerCloudSupport = () => {
+      if (!playerBody) return null;
+
+      const body = playerBody;
+      const cell = cellOf(height);
+      return (
+        cloudPlatforms.find((cloud) => {
+          if (cloud.body.isSensor) return false;
+          const horizontallyOverlapping =
+            body.bounds.max.x > cloud.body.bounds.min.x + cell * 0.15 &&
+            body.bounds.min.x < cloud.body.bounds.max.x - cell * 0.15;
+          const bodyAboveCloud = body.position.y < cloud.body.position.y;
+
+          return (
+            horizontallyOverlapping && bodyAboveCloud && body.velocity.y >= -0.5
+          );
+        }) ?? null
       );
     };
 
@@ -632,7 +669,11 @@ export default function HeroGame() {
       supportContacts.add(support.id);
       canJump = true;
       doubleJumpAvailable = hasDoubleJump;
-      isSlamming = false;
+      const cloudSupport = findCloudPlatform(cloudPlatforms, support);
+      const playerVelocityY = playerBody?.velocity.y ?? 0;
+      if (!cloudSupport || playerVelocityY < SLAM_IMPACT_MIN_VELOCITY) {
+        isSlamming = false;
+      }
       const supportObj = objectsById.get(support.id);
 
       // Once the neon plate is off and its letters have fallen, landing on a
@@ -902,7 +943,6 @@ export default function HeroGame() {
         x: playerBody.velocity.x,
         y: Math.max(playerVelocityY, PLAYER_SLAM_VELOCITY * 0.75),
       });
-      isSlamming = false;
       audio.playSfx('hitHeavy');
     };
 
@@ -1233,6 +1273,21 @@ export default function HeroGame() {
         case 's':
         case 'S':
           event.preventDefault();
+          if (!event.repeat && playerBody) {
+            const cloud = getPlayerCloudSupport();
+            if (cloud) {
+              const now = performance.now();
+              dropThroughCloudPlatform(cloud, now, CLOUD_DROP_THROUGH_MS);
+              supportContacts.delete(cloud.body.id);
+              canJump = supportContacts.size > 0;
+              Body.setVelocity(playerBody, {
+                x: playerBody.velocity.x,
+                y: Math.max(playerBody.velocity.y, 4),
+              });
+              audio.playSfx('hopDown');
+              break;
+            }
+          }
           if (
             !event.repeat &&
             playerBody &&
@@ -1485,6 +1540,36 @@ export default function HeroGame() {
           y: elevatedLedge.position.y - cell * 21,
           w: cell * 10.5,
         },
+        {
+          x: width * 0.64,
+          y: elevatedLedge.position.y - cell * 28.1,
+          w: cell * 9.5,
+        },
+        {
+          x: width * 0.3,
+          y: elevatedLedge.position.y - cell * 35.2,
+          w: cell * 10,
+        },
+        {
+          x: width * 0.73,
+          y: elevatedLedge.position.y - cell * 42,
+          w: cell * 8.8,
+        },
+        {
+          x: width * 0.47,
+          y: elevatedLedge.position.y - cell * 49.3,
+          w: cell * 9.8,
+        },
+        {
+          x: width * 0.24,
+          y: elevatedLedge.position.y - cell * 56.1,
+          w: cell * 8.6,
+        },
+        {
+          x: width * 0.58,
+          y: elevatedLedge.position.y - cell * 63.2,
+          w: cell * 10.4,
+        },
       ];
       cloudPlatforms = [
         elevatedCloud,
@@ -1636,6 +1721,26 @@ export default function HeroGame() {
       playerLevel = 'sidewalk';
       roadDropPx = roadDrop;
       sidewalkRestY = baseline - playerHeight / 2;
+      if (testSpawn === 'cloud' && playerBody) {
+        const spawnCloud =
+          cloudPlatforms[Math.min(4, cloudPlatforms.length - 1)] ??
+          elevatedCloud;
+        Body.setPosition(playerBody, {
+          x: spawnCloud.body.position.x,
+          y: spawnCloud.body.bounds.min.y - playerHeight / 2 - cell * 0.25,
+        });
+        Body.setVelocity(playerBody, { x: 0, y: 0 });
+        hasDoubleJump = true;
+        hasSlam = true;
+        doubleJumpAvailable = true;
+        blueRingCollected = true;
+        redRingCollected = true;
+        cameraTarget = Math.max(
+          cell * CAMERA_SHIFT_CELLS,
+          cell * 2.8 - playerBody.bounds.min.y,
+        );
+        cameraOffsetY = cameraTarget;
+      }
       physicsAccumulator = 0;
       lastPhysicsTime = 0;
       squashUntil = 0;
