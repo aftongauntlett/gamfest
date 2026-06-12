@@ -1,6 +1,7 @@
 ---
 import Button from '../components/Button.astro';
 import Badge from '../components/Badge.astro';
+import Icon from '../components/Icon.astro';
 import HeroGame from '../components/motion/HeroGame';
 import HeroAudioToggle from '../components/motion/HeroAudioToggle';
 import { discordUrl, facebookUrl } from '../data/config';
@@ -151,11 +152,11 @@ const isDev = import.meta.env.DEV;
       <Badge variant="magenta">TBD 2027</Badge>
     </div>
     <div class="hero__actions">
-      <Button href={discordUrl} variant="primary"
-        ><span class="hero__cta-prefix">Follow on </span>Discord</Button
+      <Button href={discordUrl} variant="primary">
+        <Icon name="discord" />JOIN Discord</Button
       >
-      <Button href={facebookUrl} variant="secondary"
-        ><span class="hero__cta-prefix">Follow on </span>Facebook</Button
+      <Button href={facebookUrl} variant="secondary">
+        <Icon name="facebook" />Follow on Facebook</Button
       >
     </div>
   </div>
@@ -354,17 +355,6 @@ const isDev = import.meta.env.DEV;
     flex-wrap: nowrap;
   }
 
-  /* Mobile CTAs: drop the "Follow on" lead-in so the buttons aren't huge */
-  .hero__cta-prefix {
-    display: none;
-  }
-
-  @media (min-width: 48rem) {
-    .hero__cta-prefix {
-      display: inline;
-    }
-  }
-
   /* Mobile: shrink the badge/button chrome — both were sized for the
      desktop overlay and felt oversized stacked on a narrow screen — and
      add breathing room between the badge row and the CTA row (a margin on
@@ -382,6 +372,15 @@ const isDev = import.meta.env.DEV;
 
     .hero__actions {
       margin-top: var(--space-2);
+    }
+  }
+
+  /* Narrow phones (e.g. Galaxy S8+ at 360px): the two CTAs no longer fit
+     on one line without overflowing, so stack them full-width instead. */
+  @media (max-width: 25rem) {
+    .hero__actions {
+      flex-direction: column;
+      align-items: stretch;
     }
   }
 
