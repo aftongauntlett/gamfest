@@ -22,10 +22,32 @@ export interface SpriteDrawState {
   squashed?: boolean;
 }
 
-const SPRITE_SHEETS = [
+interface SpriteSheetDef {
+  src: string;
+  cellCols: number;
+  cellRows: number;
+  /** Occupied [col, row] cells to exclude from spawning. */
+  excluded?: [number, number][];
+}
+
+const SPRITE_SHEETS: SpriteSheetDef[] = [
   { src: '/sprites/rogues.png', cellCols: 7, cellRows: 7 },
   { src: '/sprites/animals.png', cellCols: 9, cellRows: 16 },
-  { src: '/sprites/monsters.png', cellCols: 12, cellRows: 13 },
+  {
+    src: '/sprites/monsters.png',
+    cellCols: 12,
+    cellRows: 13,
+    excluded: [
+      [2, 7], // stone golem
+      // bugs, bats, and wolves row
+      [0, 6], [1, 6], [2, 6], [3, 6], [4, 6], [5, 6],
+      [6, 6], [7, 6], [8, 6], [9, 6], [10, 6], [11, 6],
+      // dragons and wyrm row
+      [0, 8], [1, 8], [2, 8], [3, 8], [4, 8],
+      // tangle/tentacle creatures
+      [0, 12], [1, 12], [2, 12],
+    ],
+  },
 ];
 
 export function findOccupiedCells(
@@ -70,7 +92,11 @@ export async function pickRandomSprite(): Promise<SpriteInfo> {
     img.onload = () => resolve();
     img.onerror = () => reject(new Error(`Failed to load ${sheet.src}`));
   });
-  const cells = findOccupiedCells(img, sheet.cellCols, sheet.cellRows);
+  let cells = findOccupiedCells(img, sheet.cellCols, sheet.cellRows);
+  if (sheet.excluded) {
+    const excluded = new Set(sheet.excluded.map(([c, r]) => `${c},${r}`));
+    cells = cells.filter(([c, r]) => !excluded.has(`${c},${r}`));
+  }
   const [col, row] = cells[Math.floor(Math.random() * cells.length)];
   return { img, col, row };
 }
