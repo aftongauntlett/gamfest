@@ -104,6 +104,58 @@ export function drawRingPickup(
   ctx.restore();
 }
 
+export function drawStarPickup(
+  ctx: CanvasRenderingContext2D,
+  body: Matter.Body,
+  cell: number,
+  collected: boolean,
+  now: number,
+) {
+  if (collected) return;
+
+  const bob = Math.sin(now * 0.006 + body.id) * cell * 0.14;
+  const spin = now * 0.005 + body.id;
+  const xScale = 0.38 + Math.abs(Math.cos(spin)) * 0.62;
+  const sideLit = Math.cos(spin) >= 0;
+  const outer = Math.max(18, cell * 1.3);
+  const inner = outer * 0.45;
+  const points = 5;
+
+  ctx.save();
+  ctx.translate(body.position.x, body.position.y + bob);
+  ctx.scale(xScale, 1);
+  ctx.rotate(Math.sin(spin) * 0.08);
+
+  ctx.globalAlpha = 0.24;
+  ctx.fillStyle = '#fff27a';
+  ctx.beginPath();
+  ctx.arc(0, 0, outer * 1.15, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalAlpha = 1;
+
+  ctx.beginPath();
+  for (let i = 0; i < points * 2; i += 1) {
+    const radius = i % 2 === 0 ? outer : inner;
+    const angle = -Math.PI / 2 + (i / (points * 2)) * Math.PI * 2;
+    const px = Math.cos(angle) * radius;
+    const py = Math.sin(angle) * radius;
+    if (i === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+  ctx.fillStyle = sideLit ? '#fff27a' : '#ffb347';
+  ctx.strokeStyle = '#8a4b08';
+  ctx.lineWidth = Math.max(2, Math.floor(cell * 0.14));
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.globalAlpha = 0.72;
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(-outer * 0.16, -outer * 0.52, outer * 0.16, outer * 0.34);
+  ctx.fillRect(-outer * 0.36, -outer * 0.14, outer * 0.22, outer * 0.14);
+  ctx.restore();
+}
+
 function snapToPixel(value: number, pixel: number) {
   return Math.round(value / pixel) * pixel;
 }

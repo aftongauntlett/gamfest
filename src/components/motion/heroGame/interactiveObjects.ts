@@ -94,9 +94,14 @@ export const BUTTON_DEFS: ReadonlyArray<{
   text: string;
   variant: ObjectVariant;
 }> = [
-  { text: 'FOLLOW ON DISCORD', variant: 'primary' },
+  { text: 'JOIN DISCORD', variant: 'primary' },
   { text: 'FOLLOW ON FACEBOOK', variant: 'secondary' },
 ];
+
+/** Square footprint of the brand glyph drawn beside each CTA button's label. */
+const BUTTON_ICON_SIZE = 18;
+/** Gap between the brand glyph and the label, matching `--space-2` in `Button.astro`. */
+const BUTTON_ICON_GAP = 8;
 
 /** Letters held by the `[fest]` neon plate until it is powered down. */
 export const BRACKET_SHIELDED_CHARS = new Set(['f', 'e', 's', 't']);
@@ -129,8 +134,67 @@ function drawTrackedText(
   }
 }
 
-function getButtonLines(label: string): string[] {
-  return [label];
+/** `viewBox` size of the brand glyphs in `Icon.astro`, replicated here for canvas. */
+const SOCIAL_ICON_VIEWBOX = 24;
+/** Matches `stroke-width="1.75"` on the shared `.icon` SVGs. */
+const SOCIAL_ICON_STROKE_WIDTH = 1.75;
+
+/**
+ * Discord glyph — mirrors the `discord` case in `Icon.astro` (rounded
+ * controller body, headband, two eyes), scaled to `size` px and centered on
+ * the current origin.
+ */
+function drawDiscordIcon(
+  ctx: CanvasRenderingContext2D,
+  size: number,
+  color: string,
+) {
+  const scale = size / SOCIAL_ICON_VIEWBOX;
+  ctx.save();
+  ctx.translate(-size / 2, -size / 2);
+  ctx.scale(scale, scale);
+  ctx.lineWidth = SOCIAL_ICON_STROKE_WIDTH;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+
+  ctx.beginPath();
+  ctx.roundRect(4, 7, 16, 11, 5.5);
+  ctx.stroke();
+  ctx.stroke(new Path2D('M8.5 7 9.5 4.5h5L15.5 7'));
+  for (const eyeX of [9.5, 14.5]) {
+    ctx.beginPath();
+    ctx.arc(eyeX, 13, 1.25, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
+/**
+ * Facebook glyph — mirrors the `facebook` case in `Icon.astro` (outlined "f"
+ * mark), scaled to `size` px and centered on the current origin.
+ */
+function drawFacebookIcon(
+  ctx: CanvasRenderingContext2D,
+  size: number,
+  color: string,
+) {
+  const scale = size / SOCIAL_ICON_VIEWBOX;
+  ctx.save();
+  ctx.translate(-size / 2, -size / 2);
+  ctx.scale(scale, scale);
+  ctx.lineWidth = SOCIAL_ICON_STROKE_WIDTH;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = color;
+  ctx.stroke(
+    new Path2D(
+      'M15 8.5h2.25V5.5h-2.25c-2.07 0-3.75 1.68-3.75 3.75V11H9v3h2.25v6.5h3V14H17l.5-3h-3.25V9.25c0-.41.34-.75.75-.75Z',
+    ),
+  );
+  ctx.restore();
 }
 
 /**
@@ -237,7 +301,12 @@ export function computeHeroLayout(ctx: CanvasRenderingContext2D): HeroLayout {
   let buttonX = marginX;
   const buttons = BUTTON_DEFS.map(({ text, variant }) => {
     const tracking = buttonFont * 0.16;
-    const width = measureTrackedText(ctx, text, tracking) + buttonPadX * 2 + 4;
+    const width =
+      measureTrackedText(ctx, text, tracking) +
+      buttonPadX * 2 +
+      4 +
+      BUTTON_ICON_SIZE +
+      BUTTON_ICON_GAP;
     const layout: ObjectLayout = {
       text,
       variant,
@@ -497,10 +566,11 @@ export function drawInteractiveObject(
     return;
   }
 
+  let textColor: string;
   if (obj.kind === 'button' && variant === 'primary') {
     ctx.fillStyle = palette.glow;
     ctx.fillRect(-width / 2, -height / 2, width, height);
-    ctx.fillStyle = palette.frame;
+    textColor = palette.frame;
   } else {
     const accent = getAccentColor(variant, palette);
     if (daytime) {
@@ -516,8 +586,9 @@ export function drawInteractiveObject(
       width - lineWidth,
       height - lineWidth,
     );
-    ctx.fillStyle = accent;
+    textColor = accent;
   }
+  ctx.fillStyle = textColor;
 
   const fontSize = obj.kind === 'button' ? 14 : 12;
   ctx.font =
@@ -527,13 +598,22 @@ export function drawInteractiveObject(
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   if (obj.kind === 'button') {
-    const lines = getButtonLines(label);
     const tracking = fontSize * 0.16;
-    const lineHeight = fontSize * 1.05;
-    const startY = -((lines.length - 1) * lineHeight) / 2;
-    lines.forEach((line, index) => {
-      drawTrackedText(ctx, line, 0, startY + index * lineHeight, tracking);
-    });
+    const textWidth = measureTrackedText(ctx, label, tracking);
+    const groupWidth = BUTTON_ICON_SIZE + BUTTON_ICON_GAP + textWidth;
+    const iconCenterX = -groupWidth / 2 + BUTTON_ICON_SIZE / 2;
+    const textCenterX = groupWidth / 2 - textWidth / 2;
+
+    ctx.save();
+    ctx.translate(iconCenterX, 0);
+    if (variant === 'primary') {
+      drawDiscordIcon(ctx, BUTTON_ICON_SIZE, textColor);
+    } else {
+      drawFacebookIcon(ctx, BUTTON_ICON_SIZE, textColor);
+    }
+    ctx.restore();
+
+    drawTrackedText(ctx, label, textCenterX, 0, tracking);
   } else {
     ctx.fillText(label, 0, 0);
   }

@@ -310,6 +310,8 @@ export function drawBackground(
     screenBroken?: boolean;
     faceFrame?: number;
     volume?: number;
+    beforeSkyline?: () => void;
+    starPower?: boolean;
   },
 ) {
   ctx.clearRect(0, 0, width, height);
@@ -324,6 +326,7 @@ export function drawBackground(
   if (!daytime) {
     drawStars(ctx, width, baseline, elapsed);
   }
+  billboardOptions?.beforeSkyline?.();
 
   // Ground fill behind everything — fills the base zone so nothing is empty
   ctx.fillStyle = palette.ground;

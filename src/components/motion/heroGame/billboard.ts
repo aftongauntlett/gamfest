@@ -123,6 +123,7 @@ export function drawBillboard(
     musicMuted?: boolean;
     musicTrackIndex?: number;
     musicTrackCount?: number;
+    starPower?: boolean;
   },
 ) {
   const { x, y } = origin;
@@ -135,6 +136,26 @@ export function drawBillboard(
 
   ctx.fillStyle = colors.screen;
   ctx.fillRect(x, y, width, height);
+  if (options?.starPower && !options?.screenBroken) {
+    const stripeHeight = Math.max(3, Math.floor(cell * 0.42));
+    const rainbow = [
+      '#ff4d5d',
+      '#ffb347',
+      '#fff27a',
+      '#39ff14',
+      '#4db5ff',
+      '#ff4fd8',
+    ];
+    ctx.save();
+    ctx.globalAlpha = 0.34;
+    for (let yy = y; yy < y + height; yy += stripeHeight) {
+      const index =
+        Math.floor((yy - y) / stripeHeight + elapsed / 110) % rainbow.length;
+      ctx.fillStyle = rainbow[index];
+      ctx.fillRect(x, yy, width, stripeHeight);
+    }
+    ctx.restore();
+  }
   if (options?.screenBroken) {
     const seedBase = Math.floor(elapsed / 70);
     for (let i = 0; i < 80; i++) {

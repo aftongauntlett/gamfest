@@ -73,10 +73,16 @@ import {
   drawConfetti,
   drawFeedback,
   drawRingPickup,
+  drawStarPickup,
   spawnConfetti,
   type ConfettiPiece,
   type FloatingFeedback,
 } from './heroGame/pickupsAndFx';
+import {
+  createFireworkShow,
+  updateAndDrawFireworks,
+  type FireworkShow,
+} from './heroGame/fireworks';
 import {
   breakCloudPlatform,
   createCloudPlatform,
@@ -170,8 +176,13 @@ export default function HeroGame() {
     let billboardHitbox: Matter.Body | null = null;
     let blueRing: Matter.Body | null = null;
     let redRing: Matter.Body | null = null;
+    let star: Matter.Body | null = null;
     let blueRingCollected = false;
     let redRingCollected = false;
+    let starCollected = false;
+    let fireworksActive = false;
+    let fireworks: FireworkShow = createFireworkShow();
+    let starPowerUntil = 0;
     let cameraOffsetY = 0;
     let cameraTarget = 0;
     let floatingFeedbacks: FloatingFeedback[] = [];
@@ -205,6 +216,7 @@ export default function HeroGame() {
     const BRICK_LEDGE_DROP_MS = 360;
     const CLOUD_DROP_THROUGH_MS = 700;
     const WORDMARK_PLATE_UNLOCK_DELAY_MS = 420;
+    const STAR_POWER_MS = 60_000;
     const testSpawn = new URLSearchParams(window.location.search).get(
       'heroSpawn',
     );
@@ -279,6 +291,7 @@ export default function HeroGame() {
           musicMuted: audio.isMusicMuted(),
           musicTrackIndex: audio.getMusicTrackIndex(),
           musicTrackCount: audio.getMusicTrackCount(),
+          starPower: fireworksActive && now < starPowerUntil,
         };
       }
 
@@ -339,6 +352,7 @@ export default function HeroGame() {
         musicMuted: audio.isMusicMuted(),
         musicTrackIndex: audio.getMusicTrackIndex(),
         musicTrackCount: audio.getMusicTrackCount(),
+        starPower: fireworksActive && now < starPowerUntil,
       };
     };
 
@@ -447,16 +461,25 @@ export default function HeroGame() {
       }
       ctx.save();
       if (cameraOffsetY > 0) ctx.translate(0, cameraOffsetY);
-      drawBackground(
-        ctx,
-        width,
-        height,
-        palette,
-        elapsed,
-        daytime,
-        true,
-        getBillboardRenderOptions(now),
-      );
+      const billboardRenderOptions = getBillboardRenderOptions(now);
+      drawBackground(ctx, width, height, palette, elapsed, daytime, true, {
+        ...billboardRenderOptions,
+        beforeSkyline: fireworksActive
+          ? () => {
+              ctx.save();
+              if (cameraOffsetY > 0) ctx.translate(0, -cameraOffsetY);
+              updateAndDrawFireworks(
+                ctx,
+                fireworks,
+                width,
+                height,
+                now,
+                FRAME_DURATION,
+              );
+              ctx.restore();
+            }
+          : undefined,
+      });
       for (const cloud of cloudPlatforms) {
         drawCloudPlatform(ctx, cloud, cell, daytime, now);
       }
@@ -487,6 +510,9 @@ export default function HeroGame() {
           itemSheetRef.current,
           RING_SPRITES.red,
         );
+      }
+      if (star) {
+        drawStarPickup(ctx, star, cell, starCollected, now);
       }
       if (spriteRef.current && playerBody) {
         const playerHeight = cell * 4;
@@ -1029,6 +1055,20 @@ export default function HeroGame() {
       }
     };
 
+    const handleStarPickup = (pair: Matter.Pair) => {
+      if (!playerBody || !star || starCollected) return;
+      const bodies = [pair.bodyA, pair.bodyB];
+      if (!bodies.includes(playerBody) || !bodies.includes(star)) return;
+
+      const now = performance.now();
+      starCollected = true;
+      fireworksActive = true;
+      fireworks.nextLaunchAt = 0;
+      starPowerUntil = now + STAR_POWER_MS;
+      addFeedback('+ Fireworks!', 'good', -cellOf(height) * 1.15);
+      audio.playSfx('pickup');
+    };
+
     const handleBillboardImpact = (
       pair: Matter.Pair,
       now: number,
@@ -1079,6 +1119,7 @@ export default function HeroGame() {
         addSupportContact(pair, now);
         handleBillboardImpact(pair, now, playerVelocityY);
         handleRingPickup(pair);
+        handleStarPickup(pair);
         handleFallenObjectSidePush(pair);
         handleCloudImpact(pair.bodyA, pair.bodyB, now, playerVelocityY);
         handleCloudImpact(pair.bodyB, pair.bodyA, now, playerVelocityY);
@@ -1128,8 +1169,13 @@ export default function HeroGame() {
       billboardHitbox = null;
       blueRing = null;
       redRing = null;
+      star = null;
       blueRingCollected = false;
       redRingCollected = false;
+      starCollected = false;
+      fireworksActive = false;
+      fireworks = createFireworkShow();
+      starPowerUntil = 0;
       hasDoubleJump = false;
       hasSlam = false;
       doubleJumpAvailable = false;
@@ -1624,6 +1670,17 @@ export default function HeroGame() {
           label: 'red-ring',
         },
       );
+      const topCloud = cloudPlatforms[cloudPlatforms.length - 1];
+      star = Bodies.circle(
+        topCloud.body.position.x,
+        topCloud.body.bounds.min.y - cell * 2.2,
+        Math.max(8, cell * 0.7),
+        {
+          isStatic: true,
+          isSensor: true,
+          label: 'top-star',
+        },
+      );
 
       playerBody = Bodies.rectangle(
         cell * PLAYER_SPAWN_X_CELLS,
@@ -1679,6 +1736,7 @@ export default function HeroGame() {
         billboardHitbox,
         blueRing,
         redRing,
+        star,
         playerBody,
         ...interactiveObjects.map((obj) => obj.body),
       ]);
@@ -1697,6 +1755,10 @@ export default function HeroGame() {
       isSlamming = false;
       blueRingCollected = false;
       redRingCollected = false;
+      starCollected = false;
+      fireworksActive = false;
+      fireworks = createFireworkShow();
+      starPowerUntil = 0;
       cameraOffsetY = 0;
       cameraTarget = 0;
       brickLedgeDropUntil = 0;
@@ -1735,6 +1797,10 @@ export default function HeroGame() {
         doubleJumpAvailable = true;
         blueRingCollected = true;
         redRingCollected = true;
+        starCollected = false;
+        fireworksActive = false;
+        fireworks = createFireworkShow();
+        starPowerUntil = 0;
         cameraTarget = Math.max(
           cell * CAMERA_SHIFT_CELLS,
           cell * 2.8 - playerBody.bounds.min.y,
