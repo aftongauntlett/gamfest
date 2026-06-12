@@ -121,6 +121,8 @@ export function drawBillboard(
     screenBroken?: boolean;
     volume?: number;
     musicMuted?: boolean;
+    musicTrackIndex?: number;
+    musicTrackCount?: number;
   },
 ) {
   const { x, y } = origin;
@@ -172,6 +174,8 @@ export function drawBillboard(
       nightGlow,
       options?.volume ?? 0,
       options?.musicMuted ?? false,
+      options?.musicTrackIndex ?? 0,
+      options?.musicTrackCount ?? 1,
     );
   } else if (options?.screenBroken) {
     ctx.strokeStyle = colors.glow;
@@ -308,15 +312,14 @@ const HELP_KEY_ROWS: ReadonlyArray<readonly [string, string]> = [
   ['JUMP', 'SPACE'],
   ['DOUBLE JUMP', 'SPACE x2'],
   ['SLAM', 'E'],
-  ['DROP DOWN', 'S/↓'],
   ['EXIT', 'ESC'],
   ['RESET', 'R'],
 ];
 
 export const HELP_VOLUME_STEPS = 5;
 
-/** Key/control rows plus the VOLUME and MUSIC rows drawn below them. */
-const HELP_ROW_COUNT = HELP_KEY_ROWS.length + 2;
+/** Key/control rows plus the VOLUME, MUSIC, and SONG rows drawn below them. */
+const HELP_ROW_COUNT = HELP_KEY_ROWS.length + 3;
 
 /**
  * Shared panel geometry for the help overlay, including the volume/music
@@ -344,6 +347,7 @@ function getHelpLayout(
   const firstRowY = panelY + headerH + rowGap / 2;
   const volumeRowY = firstRowY + HELP_KEY_ROWS.length * rowGap;
   const musicRowY = volumeRowY + rowGap;
+  const songRowY = musicRowY + rowGap;
   return {
     panelX,
     panelY,
@@ -356,6 +360,7 @@ function getHelpLayout(
     firstRowY,
     volumeRowY,
     musicRowY,
+    songRowY,
   };
 }
 
@@ -436,6 +441,36 @@ export function getHelpMusicToggleBounds(
   };
 }
 
+/** Hit-test bounds for the CHANGE SONG selector chip on the help overlay's SONG row. */
+export function getHelpSongSelectorBounds(
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  cell: number,
+  trackText = '< 1/3 >',
+) {
+  const { panelX, panelW, songRowY, rowFont } = getHelpLayout(
+    x,
+    y,
+    width,
+    height,
+    cell,
+  );
+  const approxCharW = Math.max(4, rowFont * 0.68);
+  const selectorW = Math.min(
+    panelW * 0.46,
+    Math.max(cell * 4.1, trackText.length * approxCharW + cell * 1.15),
+  );
+  const selectorH = Math.max(7, rowFont + cell * 0.34);
+  return {
+    x: panelX + panelW - selectorW - cell * 0.46,
+    y: songRowY - selectorH / 2,
+    width: selectorW,
+    height: selectorH,
+  };
+}
+
 export function drawBillboardHelp(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -447,6 +482,8 @@ export function drawBillboardHelp(
   nightGlow: boolean,
   volume: number,
   musicMuted: boolean,
+  musicTrackIndex: number,
+  musicTrackCount: number,
 ) {
   const {
     panelX,
@@ -459,6 +496,7 @@ export function drawBillboardHelp(
     firstRowY,
     volumeRowY,
     musicRowY,
+    songRowY,
   } = getHelpLayout(x, y, width, height, cell);
   const lineColor = nightGlow ? colors.glow : '#0d7a32';
   const textColor = nightGlow ? '#b8ffb0' : '#12331b';
@@ -558,6 +596,32 @@ export function drawBillboardHelp(
     musicToggle.x + musicToggle.width / 2,
     musicToggle.y + musicToggle.height / 2 + 1,
   );
+
+  ctx.textAlign = 'left';
+  ctx.fillStyle = textColor;
+  ctx.fillText('CHANGE SONG', panelX + cell * 0.55, songRowY);
+
+  const trackText = `< ${musicTrackIndex + 1}/${musicTrackCount} >`;
+  const selector = getHelpSongSelectorBounds(
+    x,
+    y,
+    width,
+    height,
+    cell,
+    trackText,
+  );
+  ctx.fillStyle = colors.frame;
+  ctx.fillRect(selector.x, selector.y, selector.width, selector.height);
+  ctx.strokeStyle = lineColor;
+  ctx.strokeRect(
+    selector.x + 1,
+    selector.y + 1,
+    selector.width - 2,
+    selector.height - 2,
+  );
+  ctx.textAlign = 'center';
+  ctx.fillStyle = colors.glow;
+  ctx.fillText(trackText, selector.x + selector.width / 2, songRowY + 1);
 
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';

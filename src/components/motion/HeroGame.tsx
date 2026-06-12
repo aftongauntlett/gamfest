@@ -43,11 +43,13 @@ import {
 import {
   BILLBOARD_MESSAGES,
   drawClickToPlayPrompt,
+  drawBillboardHelp,
   FACE_FRAMES,
   getBillboardGeometry,
   getBillboardHelpButtonBounds,
   getHelpCloseButtonBounds,
   getHelpMusicToggleBounds,
+  getHelpSongSelectorBounds,
   getHelpVolumeBarBounds,
 } from './heroGame/billboard';
 import { getHeroAudio } from './heroGame/audio';
@@ -177,6 +179,7 @@ export default function HeroGame() {
     let finaleTriggered = false;
     let finaleStartedAt = 0;
     let confetti: ConfettiPiece[] = [];
+    let helpOpenedAt = 0;
 
     const cellOf = (h: number) => Math.max(3, Math.floor(h / 28));
     const BILLBOARD_HIT_SCRAMBLE_MS = 240;
@@ -245,6 +248,8 @@ export default function HeroGame() {
           faceFrame: glitching ? 2 : billboardFaceFrame,
           volume: audio.getVolume(),
           musicMuted: audio.isMusicMuted(),
+          musicTrackIndex: audio.getMusicTrackIndex(),
+          musicTrackCount: audio.getMusicTrackCount(),
         };
       }
 
@@ -303,7 +308,39 @@ export default function HeroGame() {
               : billboardHitCount % FACE_FRAMES.length,
         volume: audio.getVolume(),
         musicMuted: audio.isMusicMuted(),
+        musicTrackIndex: audio.getMusicTrackIndex(),
+        musicTrackCount: audio.getMusicTrackCount(),
       };
+    };
+
+    const drawHelpOverlay = () => {
+      const cell = cellOf(height);
+      const billboard = getBillboardGeometry(width, cell);
+
+      ctx.save();
+      ctx.fillStyle = daytime ? 'rgba(8, 18, 28, 0.42)' : 'rgba(0, 0, 0, 0.5)';
+      ctx.fillRect(0, 0, width, height);
+      ctx.restore();
+
+      drawBillboardHelp(
+        ctx,
+        billboard.bbX,
+        billboard.bbY + cameraOffsetY,
+        billboard.bbWidth,
+        billboard.bbHeight,
+        cell,
+        {
+          frame: palette.frame,
+          screen: palette.screen,
+          glow: palette.glow,
+          facePixel: palette.facePixel,
+        },
+        !daytime,
+        audio.getVolume(),
+        audio.isMusicMuted(),
+        audio.getMusicTrackIndex(),
+        audio.getMusicTrackCount(),
+      );
     };
 
     const triggerBillboardHit = (now: number) => {
@@ -370,8 +407,10 @@ export default function HeroGame() {
 
     const drawActiveFrame = (now: number) => {
       const cell = cellOf(height);
-      updateCameraOffset(cell);
-      updateBillboardTimedHints(now);
+      if (!billboardHelpOpen) {
+        updateCameraOffset(cell);
+        updateBillboardTimedHints(now);
+      }
       if (cameraOffsetY > 0) {
         ctx.fillStyle = palette.sky;
         ctx.fillRect(0, 0, width, height);
@@ -442,11 +481,12 @@ export default function HeroGame() {
       drawFeedback(ctx, floatingFeedbacks, width, height, cell, now);
       drawConfetti(ctx, confetti, width, height);
       drawFinaleBanner(now);
+      if (billboardHelpOpen) drawHelpOverlay();
       drawScanlines(ctx, width, height, palette.scanline);
     };
 
     const stepPhysics = (dt: number) => {
-      if (!engine || !playerBody) return;
+      if (!engine || !playerBody || billboardHelpOpen) return;
       const speed = inputRun ? PLAYER_RUN_SPEED : PLAYER_WALK_SPEED;
       const vx = inputRight === inputLeft ? 0 : inputRight ? speed : -speed;
       if (vx !== 0) facing = vx > 0 ? 'right' : 'left';
@@ -874,6 +914,7 @@ export default function HeroGame() {
         billboardTargetText = '';
         billboardFaceFrame = 2;
         billboardHelpOpen = false;
+        helpOpenedAt = 0;
         Body.setVelocity(playerBody, { x: playerBody.velocity.x, y: -4 });
         isSlamming = false;
         audio.playSfx('hitHeavy');
@@ -968,6 +1009,7 @@ export default function HeroGame() {
       billboardTargetText = BILLBOARD_MESSAGES[0];
       billboardFaceFrame = 0;
       billboardHelpOpen = false;
+      helpOpenedAt = 0;
       billboardScreenBroken = false;
       lastBillboardHitAt = -Infinity;
       billboardScrambleUntil = 0;
@@ -989,6 +1031,44 @@ export default function HeroGame() {
     };
 
     const onKeyDown = (event: KeyboardEvent) => {
+      if (billboardHelpOpen) {
+        switch (event.key) {
+          case 'Escape':
+            event.preventDefault();
+            if (!event.repeat) closeBillboardHelp(performance.now());
+            break;
+          case 'ArrowLeft':
+          case 'a':
+          case 'A':
+            event.preventDefault();
+            if (!event.repeat) audio.changeMusicTrack(-1);
+            break;
+          case 'ArrowRight':
+          case 'd':
+          case 'D':
+            event.preventDefault();
+            if (!event.repeat) audio.changeMusicTrack(1);
+            break;
+          case 'Shift':
+          case ' ':
+          case 'e':
+          case 'E':
+          case 'ArrowDown':
+          case 's':
+          case 'S':
+          case 'ArrowUp':
+          case 'w':
+          case 'W':
+          case 'r':
+          case 'R':
+            event.preventDefault();
+            break;
+          default:
+            break;
+        }
+        return;
+      }
+
       switch (event.key) {
         case 'ArrowRight':
         case 'd':
@@ -1125,11 +1205,7 @@ export default function HeroGame() {
           break;
         case 'Escape':
           if (!event.repeat) {
-            if (billboardHelpOpen) {
-              billboardHelpOpen = false;
-            } else {
-              deactivate();
-            }
+            deactivate();
           }
           break;
         case 'r':
@@ -1143,6 +1219,7 @@ export default function HeroGame() {
     };
 
     const onKeyUp = (event: KeyboardEvent) => {
+      if (billboardHelpOpen) return;
       switch (event.key) {
         case 'ArrowRight':
         case 'd':
@@ -1412,6 +1489,7 @@ export default function HeroGame() {
       lastPhysicsTime = 0;
       squashUntil = 0;
       billboardHelpOpen = false;
+      helpOpenedAt = 0;
     };
 
     const activate = () => {
@@ -1447,6 +1525,35 @@ export default function HeroGame() {
       audio.playSfx('respawn');
     };
 
+    const openBillboardHelp = (now: number) => {
+      if (billboardHelpOpen) return;
+      billboardHelpOpen = true;
+      helpOpenedAt = now;
+      inputLeft = false;
+      inputRight = false;
+      inputRun = false;
+      if (playerBody) {
+        Body.setVelocity(playerBody, { x: 0, y: playerBody.velocity.y });
+      }
+    };
+
+    const closeBillboardHelp = (now: number) => {
+      if (!billboardHelpOpen) return;
+      const pausedFor = Math.max(0, now - helpOpenedAt);
+      billboardHelpOpen = false;
+      helpOpenedAt = 0;
+
+      if (billboardPhase === 'transition') {
+        billboardPhaseStartedAt += pausedFor;
+      }
+      if (Number.isFinite(lastBillboardHitAt)) {
+        lastBillboardHitAt += pausedFor;
+      }
+      if (Number.isFinite(doubleJumpHintAt)) {
+        doubleJumpHintAt += pausedFor;
+      }
+    };
+
     const onCanvasClick = (event: MouseEvent) => {
       if (state === 'active') {
         const rect = canvas.getBoundingClientRect();
@@ -1471,7 +1578,7 @@ export default function HeroGame() {
             point.y <= helpButton.y + helpButton.size
           ) {
             event.preventDefault();
-            billboardHelpOpen = true;
+            openBillboardHelp(performance.now());
           }
           return;
         }
@@ -1490,7 +1597,7 @@ export default function HeroGame() {
           point.y <= closeButton.y + closeButton.size
         ) {
           event.preventDefault();
-          billboardHelpOpen = false;
+          closeBillboardHelp(performance.now());
           return;
         }
 
@@ -1529,6 +1636,27 @@ export default function HeroGame() {
         ) {
           event.preventDefault();
           audio.toggleMusicMuted();
+          return;
+        }
+
+        const songSelector = getHelpSongSelectorBounds(
+          billboard.bbX,
+          billboard.bbY,
+          billboard.bbWidth,
+          billboard.bbHeight,
+          cell,
+          `< ${audio.getMusicTrackIndex() + 1}/${audio.getMusicTrackCount()} >`,
+        );
+        if (
+          point.x >= songSelector.x &&
+          point.x <= songSelector.x + songSelector.width &&
+          point.y >= songSelector.y &&
+          point.y <= songSelector.y + songSelector.height
+        ) {
+          event.preventDefault();
+          const direction =
+            point.x < songSelector.x + songSelector.width / 2 ? -1 : 1;
+          audio.changeMusicTrack(direction);
         }
         return;
       }
@@ -1604,7 +1732,22 @@ export default function HeroGame() {
             point.y >= musicToggle.y &&
             point.y <= musicToggle.y + musicToggle.height;
 
-          isInteractive = isCloseButton || isVolumeSegment || isMusicToggle;
+          const songSelector = getHelpSongSelectorBounds(
+            billboard.bbX,
+            billboard.bbY,
+            billboard.bbWidth,
+            billboard.bbHeight,
+            cell,
+            `< ${audio.getMusicTrackIndex() + 1}/${audio.getMusicTrackCount()} >`,
+          );
+          const isSongSelector =
+            point.x >= songSelector.x &&
+            point.x <= songSelector.x + songSelector.width &&
+            point.y >= songSelector.y &&
+            point.y <= songSelector.y + songSelector.height;
+
+          isInteractive =
+            isCloseButton || isVolumeSegment || isMusicToggle || isSongSelector;
         }
 
         canvas.style.cursor = isInteractive ? 'pointer' : '';
@@ -1645,7 +1788,7 @@ export default function HeroGame() {
     const tick = (time: number) => {
       frameId = requestAnimationFrame(tick);
 
-      if (state === 'active' && engine && playerBody) {
+      if (state === 'active' && engine && playerBody && !billboardHelpOpen) {
         if (lastPhysicsTime === 0) lastPhysicsTime = time;
         const frameDelta = Math.min(time - lastPhysicsTime, 250);
         lastPhysicsTime = time;
@@ -1661,10 +1804,10 @@ export default function HeroGame() {
       const drawDelta = time - lastFrameTime;
       if (drawDelta < FRAME_DURATION) return;
       lastFrameTime = time - (drawDelta % FRAME_DURATION);
-      elapsed += drawDelta;
+      if (!billboardHelpOpen) elapsed += drawDelta;
 
       if (state === 'active') {
-        drawActiveFrame(time);
+        drawActiveFrame(billboardHelpOpen ? helpOpenedAt : time);
       } else {
         drawPassiveFrame();
       }

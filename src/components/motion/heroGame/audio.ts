@@ -1,8 +1,11 @@
-import musicTrackUrl from '../../../assets/audio/dj-artmusic-fun.mp3?url';
+import musicTrack8BitUrl from '../../../assets/audio/dj-artmusic-8-bit.mp3?url';
+import musicTrackFunUrl from '../../../assets/audio/dj-artmusic-fun.mp3?url';
+import musicTrackHeroUrl from '../../../assets/audio/dj-artmusic-hero.mp3?url';
 
 const MUTED_KEY = 'heroGameAudioMuted';
 const VOLUME_KEY = 'heroGameAudioVolume';
 const MUSIC_MUTED_KEY = 'heroGameMusicMuted';
+const MUSIC_TRACK_INDEX_KEY = 'heroGameMusicTrackIndex';
 
 /** CLAUDE.md a11y rule: audio starts muted until the player opts in. */
 const DEFAULT_MUTED = true;
@@ -10,6 +13,11 @@ const DEFAULT_VOLUME = 0.6;
 const DEFAULT_MUSIC_MUTED = false;
 /** Background music sits well under SFX/master level so it stays "background". */
 const MUSIC_VOLUME_SCALE = 0.45;
+const MUSIC_TRACK_URLS = [
+  musicTrackFunUrl,
+  musicTrack8BitUrl,
+  musicTrackHeroUrl,
+] as const;
 
 export type SfxName =
   | 'jump'
@@ -46,6 +54,18 @@ function readStoredMusicMuted(): boolean {
   if (typeof window === 'undefined') return DEFAULT_MUSIC_MUTED;
   const raw = window.localStorage.getItem(MUSIC_MUTED_KEY);
   return raw === null ? DEFAULT_MUSIC_MUTED : raw === 'true';
+}
+
+function readStoredMusicTrackIndex(): number {
+  if (typeof window === 'undefined') return 0;
+  const raw = window.localStorage.getItem(MUSIC_TRACK_INDEX_KEY);
+  if (raw === null) return 0;
+  const parsed = Number(raw);
+  return Number.isInteger(parsed) &&
+    parsed >= 0 &&
+    parsed < MUSIC_TRACK_URLS.length
+    ? parsed
+    : 0;
 }
 
 function getAudioContextConstructor(): typeof AudioContext | undefined {
@@ -323,6 +343,7 @@ class HeroAudioEngine {
   private muted = readStoredMuted();
   private volume = readStoredVolume();
   private musicMuted = readStoredMusicMuted();
+  private musicTrackIndex = readStoredMusicTrackIndex();
   private ctx: AudioContext | null = null;
   private music: HTMLAudioElement | null = null;
   private readonly listeners = new Set<Listener>();
@@ -337,6 +358,14 @@ class HeroAudioEngine {
 
   isMusicMuted(): boolean {
     return this.musicMuted;
+  }
+
+  getMusicTrackIndex(): number {
+    return this.musicTrackIndex;
+  }
+
+  getMusicTrackCount(): number {
+    return MUSIC_TRACK_URLS.length;
   }
 
   /** Notified whenever `muted`/`volume` change — used by UI to stay in sync. */
@@ -373,6 +402,30 @@ class HeroAudioEngine {
     this.setMusicMuted(!this.musicMuted);
   }
 
+  setMusicTrackIndex(index: number) {
+    const count = MUSIC_TRACK_URLS.length;
+    const wrapped = ((index % count) + count) % count;
+    if (this.musicTrackIndex === wrapped) return;
+
+    this.musicTrackIndex = wrapped;
+    window.localStorage.setItem(MUSIC_TRACK_INDEX_KEY, String(wrapped));
+
+    const wasPlaying = this.music !== null && !this.music.paused;
+    if (this.music) {
+      this.music.pause();
+      this.music.src = MUSIC_TRACK_URLS[this.musicTrackIndex];
+      this.music.load();
+      this.music.currentTime = 0;
+      this.applyMusicVolume();
+      if (wasPlaying) void this.music.play().catch(() => {});
+    }
+    this.notify();
+  }
+
+  changeMusicTrack(delta: number) {
+    this.setMusicTrackIndex(this.musicTrackIndex + delta);
+  }
+
   setVolume(volume: number) {
     const clamped = Math.min(1, Math.max(0, volume));
     if (this.volume === clamped) return;
@@ -403,7 +456,7 @@ class HeroAudioEngine {
   playMusic() {
     if (typeof window === 'undefined') return;
     if (!this.music) {
-      const audio = new Audio(musicTrackUrl);
+      const audio = new Audio(MUSIC_TRACK_URLS[this.musicTrackIndex]);
       audio.loop = true;
       audio.preload = 'auto';
       this.music = audio;
