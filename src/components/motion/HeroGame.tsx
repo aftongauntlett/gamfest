@@ -1554,21 +1554,36 @@ export default function HeroGame() {
       const heroLayout = computeHeroLayout(ctx);
       const elevatedLedgeHeight = Math.max(5, cell * 0.8);
       const elevatedLedgeClearance = cell * 0.5;
-      const elevatedCloud = createCloudPlatform(
-        Math.max(cell * 15, width * 0.3),
-        heroLayout.tagline[0].y -
-          playerHeight -
-          elevatedLedgeClearance -
-          elevatedLedgeHeight / 2,
-        cell * 13,
-        elevatedLedgeHeight,
-      );
-      elevatedLedge = elevatedCloud.body;
+      const elevatedCloudWidth = cell * 13;
       const clampCloudX = (x: number, cloudWidth: number) =>
         Math.max(
           cloudWidth / 2 + cell,
           Math.min(width - cloudWidth / 2 - cell, x),
         );
+      const heroContentRight = Math.max(
+        ...heroLayout.tagline.map((layout) => layout.x + layout.width),
+        heroLayout.wordmarkPlate.x + heroLayout.wordmarkPlate.width,
+        ...heroLayout.wordmark.map((layout) => layout.x + layout.width),
+        ...heroLayout.badges.map((layout) => layout.x + layout.width),
+        ...heroLayout.buttons.map((layout) => layout.x + layout.width),
+      );
+      const elevatedCloudX = clampCloudX(
+        Math.max(
+          width * 0.5,
+          heroContentRight + elevatedCloudWidth / 2 + cell * 1.25,
+        ),
+        elevatedCloudWidth,
+      );
+      const elevatedCloud = createCloudPlatform(
+        elevatedCloudX,
+        heroLayout.tagline[0].y -
+          playerHeight -
+          elevatedLedgeClearance -
+          elevatedLedgeHeight / 2,
+        elevatedCloudWidth,
+        elevatedLedgeHeight,
+      );
+      elevatedLedge = elevatedCloud.body;
       const cloudHeight = elevatedLedgeHeight;
       const skyCloudSpecs = [
         {
