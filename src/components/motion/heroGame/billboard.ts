@@ -331,7 +331,8 @@ export function drawBillboardHelp(
     ['MOVE', 'A/D'],
     ['SPRINT', 'SHIFT'],
     ['JUMP', 'SPACE'],
-    ['POWER', '2X SPACE'],
+    ['DOUBLE', 'SPACE'],
+    ['SLAM', 'E'],
     ['EXIT', 'ESC'],
     ['RESET', 'R'],
   ];

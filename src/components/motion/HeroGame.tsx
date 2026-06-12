@@ -621,12 +621,8 @@ export default function HeroGame() {
         bodies.includes(redRing)
       ) {
         redRingCollected = true;
-        hasDoubleJump = false;
-        doubleJumpAvailable = false;
         hasSlam = true;
-        addFeedback('- Double Jump', 'bad', -cellOf(height) * 1.4);
-        addFeedback('+ Slam', 'good', 0);
-        addFeedback("Don't fall!", 'warn', cellOf(height) * 1.4);
+        addFeedback('+ Slam', 'good', cellOf(height) * 1.15);
       }
     };
 
@@ -783,13 +779,24 @@ export default function HeroGame() {
                 y: -PLAYER_DOUBLE_JUMP_VELOCITY,
               });
               doubleJumpAvailable = false;
-            } else if (hasSlam && !isSlamming) {
-              Body.setVelocity(playerBody, {
-                x: playerBody.velocity.x,
-                y: PLAYER_SLAM_VELOCITY,
-              });
-              isSlamming = true;
             }
+          }
+          break;
+        case 'e':
+        case 'E':
+          event.preventDefault();
+          if (
+            !event.repeat &&
+            playerBody &&
+            hasSlam &&
+            !isSlamming &&
+            !canJump
+          ) {
+            Body.setVelocity(playerBody, {
+              x: playerBody.velocity.x,
+              y: PLAYER_SLAM_VELOCITY,
+            });
+            isSlamming = true;
           }
           break;
         case 'Shift':
