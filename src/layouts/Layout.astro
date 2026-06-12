@@ -23,10 +23,13 @@ const levels = [
   { href: '#contact', label: 'Contact' },
 ];
 
-// Social share preview: keep this as a stable public URL so Discord and other
-// crawlers can fetch it from preview deployments as well as production.
-const ogImageUrl = new URL('/gamfest-og.png', Astro.site);
-const canonicalUrl = new URL(Astro.url.pathname, Astro.site);
+const socialImageAlt =
+  'A retro-styled GAM[fest] hero scene with the festival logo, pixel skyline, and arcade billboard.';
+
+// Social share preview: keep these as stable public absolute URLs so Discord
+// and other crawlers fetch the same image URL users see in the shared link.
+const ogImageUrl = new URL('/gamfest-og.png', Astro.site).toString();
+const canonicalUrl = new URL(Astro.url.pathname, Astro.site).toString();
 ---
 
 <html lang="en">
@@ -47,19 +50,19 @@ const canonicalUrl = new URL(Astro.url.pathname, Astro.site);
     <meta property="og:title" content={title} />
     <meta property="og:description" content={description} />
     <meta property="og:image" content={ogImageUrl} />
+    <meta property="og:image:url" content={ogImageUrl} />
+    <meta property="og:image:secure_url" content={ogImageUrl} />
     <meta property="og:image:type" content="image/png" />
     <meta property="og:image:width" content="1234" />
     <meta property="og:image:height" content="688" />
-    <meta
-      property="og:image:alt"
-      content="A retro-styled GAM[fest] hero scene with the festival logo, pixel skyline, and arcade billboard."
-    />
+    <meta property="og:image:alt" content={socialImageAlt} />
 
     <!-- Twitter card -->
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content={title} />
     <meta name="twitter:description" content={description} />
     <meta name="twitter:image" content={ogImageUrl} />
+    <meta name="twitter:image:alt" content={socialImageAlt} />
     <!-- Sets data-hero-time before first paint so day/night CSS vars apply without flash -->
     <script is:inline>
       (function () {

@@ -6,9 +6,8 @@ import react from '@astrojs/react';
 const env = /** @type {Record<string, string | undefined>} */ (
   Reflect.get(globalThis, 'process')?.env ?? {}
 );
-const site =
-  env.PUBLIC_SITE_URL ??
-  (env.VERCEL_URL ? `https://${env.VERCEL_URL}` : 'https://gamfest.org');
+const DEFAULT_SITE_URL = 'https://gamfest-demo.vercel.app';
+const site = (env.PUBLIC_SITE_URL ?? DEFAULT_SITE_URL).replace(/\/+$/, '');
 
 // https://astro.build/config
 export default defineConfig({
