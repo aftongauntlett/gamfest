@@ -1,8 +1,9 @@
 import Matter from 'matter-js';
 import {
   DAMAGE_SHAKE_MS,
+  OBJECT_FRICTION,
+  OBJECT_FRICTION_STATIC,
   OBJECT_RESTITUTION,
-  PLAYER_FRICTION,
   SLAM_DAMAGE,
 } from './constants';
 import { hexToRgba, type Palette } from './palette';
@@ -229,7 +230,7 @@ export function computeHeroLayout(ctx: CanvasRenderingContext2D): HeroLayout {
   const buttonFont = 14;
   const buttonPadX = 24;
   const buttonGap = 12;
-  const buttonHeight = 48;
+  const buttonHeight = 42;
   const buttonY = badgeY + badgeHeight + rowGap;
 
   ctx.font = `700 ${buttonFont}px ui-monospace, 'SF Mono', Menlo, Consolas, monospace`;
@@ -267,7 +268,11 @@ export function createPinnedBody(
     layout.y + layout.height / 2,
     layout.width,
     layout.height,
-    { friction: PLAYER_FRICTION, restitution: OBJECT_RESTITUTION },
+    {
+      friction: OBJECT_FRICTION,
+      frictionStatic: OBJECT_FRICTION_STATIC,
+      restitution: OBJECT_RESTITUTION,
+    },
   );
   Body.setMass(body, mass);
   Body.setStatic(body, true);
@@ -357,11 +362,12 @@ function drawPowerOverlay(
   width: number,
   height: number,
   alpha: number,
+  daytime: boolean,
 ) {
   if (alpha <= 0) return;
   ctx.save();
-  ctx.globalAlpha = alpha;
-  ctx.fillStyle = '#0a0a12';
+  ctx.globalAlpha = daytime ? alpha * 0.62 : alpha;
+  ctx.fillStyle = daytime ? '#e7f4fa' : '#0a0a12';
   ctx.fillRect(-width / 2, -height / 2, width, height);
   ctx.restore();
 }
@@ -378,12 +384,10 @@ function drawHitFlash(
 
   ctx.save();
   ctx.globalAlpha = 0.12 + amount * 0.32;
-  ctx.fillStyle = daytime ? '#ffffff' : palette.glow;
+  ctx.fillStyle = daytime ? '#fff4b8' : palette.glow;
   ctx.fillRect(-width / 2, -height / 2, width, height);
   ctx.globalAlpha = 0.35 + amount * 0.45;
-  ctx.strokeStyle = daytime
-    ? 'rgba(255, 255, 255, 0.9)'
-    : palette.accentMagenta;
+  ctx.strokeStyle = daytime ? palette.accentAmber : palette.accentMagenta;
   ctx.lineWidth = Math.max(1, Math.min(width, height) * 0.08);
   ctx.strokeRect(
     -width / 2 + ctx.lineWidth / 2,
@@ -474,8 +478,6 @@ export function drawInteractiveObject(
       ctx.fillStyle = daytime ? '#1a2030' : '#f4efe6';
     }
     ctx.fillText(label, 0, 1);
-    drawHitFlash(ctx, width, height, palette, daytime, hitFlash);
-    drawPowerOverlay(ctx, width, height, overlayAlpha);
     ctx.textAlign = 'left';
     ctx.textBaseline = 'alphabetic';
     ctx.restore();
@@ -489,8 +491,6 @@ export function drawInteractiveObject(
     ctx.textBaseline = 'middle';
     ctx.fillStyle = daytime ? '#0d7a32' : '#8fe39a';
     ctx.fillText(label, 0, 0);
-    drawHitFlash(ctx, width, height, palette, daytime, hitFlash);
-    drawPowerOverlay(ctx, width, height, overlayAlpha);
     ctx.textAlign = 'left';
     ctx.textBaseline = 'alphabetic';
     ctx.restore();
@@ -541,7 +541,7 @@ export function drawInteractiveObject(
   ctx.textBaseline = 'alphabetic';
 
   drawHitFlash(ctx, width, height, palette, daytime, hitFlash);
-  drawPowerOverlay(ctx, width, height, overlayAlpha);
+  drawPowerOverlay(ctx, width, height, overlayAlpha, daytime);
 
   ctx.restore();
 }
@@ -564,6 +564,11 @@ export function drawTaglineSeparators(
   for (let i = 0; i < chunks.length - 1; i++) {
     const left = chunks[i];
     const right = chunks[i + 1];
+    const bothStillAnchored =
+      (left.state === 'pinned' || left.state === 'damaged') &&
+      (right.state === 'pinned' || right.state === 'damaged');
+    if (!bothStillAnchored) continue;
+
     const x =
       left.body.position.x +
       left.width / 2 +

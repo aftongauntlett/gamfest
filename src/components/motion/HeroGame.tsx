@@ -31,14 +31,19 @@ import {
   LANDING_SQUASH_MS,
   PLAYER_DOUBLE_JUMP_VELOCITY,
   PLAYER_FRICTION,
+  PLAYER_FRICTION_STATIC,
   PLAYER_JUMP_VELOCITY,
   PLAYER_RUN_SPEED,
   PLAYER_SLAM_VELOCITY,
   PLAYER_SPAWN_X_CELLS,
   PLAYER_WALK_SPEED,
+  RUN_PUSH_FORCE,
   SLAM_DAMAGE,
   SLAM_IMPACT_MIN_VELOCITY,
   SPAWN_DROP_CELLS,
+  SURFACE_FRICTION,
+  SURFACE_FRICTION_STATIC,
+  WALK_PUSH_FORCE,
 } from './heroGame/constants';
 import {
   BILLBOARD_MESSAGES,
@@ -115,8 +120,8 @@ export default function HeroGame() {
     const heroEl = canvas.closest<HTMLElement>('.hero');
     const heroContentEl = heroEl?.querySelector<HTMLElement>('.hero__content');
 
-    const daytime = isESTDaytime();
-    const palette = getPalette(daytime);
+    let daytime = isESTDaytime();
+    let palette = getPalette(daytime);
     document.documentElement.dataset.heroTime = daytime ? 'day' : 'night';
     const audio = getHeroAudio();
 
@@ -860,6 +865,57 @@ export default function HeroGame() {
       }
     };
 
+    const handleFallenObjectSidePush = (pair: Matter.Pair) => {
+      if (!playerBody) return;
+      const target =
+        pair.bodyA === playerBody
+          ? pair.bodyB
+          : pair.bodyB === playerBody
+            ? pair.bodyA
+            : null;
+      if (!target || target.isStatic) return;
+
+      const obj = objectsById.get(target.id);
+      if (!obj || obj.state !== 'fallen') return;
+
+      const verticalOverlap =
+        Math.min(playerBody.bounds.max.y, target.bounds.max.y) -
+        Math.max(playerBody.bounds.min.y, target.bounds.min.y);
+      const horizontalOverlap =
+        Math.min(playerBody.bounds.max.x, target.bounds.max.x) -
+        Math.max(playerBody.bounds.min.x, target.bounds.min.x);
+      const playerHeight = playerBody.bounds.max.y - playerBody.bounds.min.y;
+      const targetHeight = target.bounds.max.y - target.bounds.min.y;
+      const sideContact =
+        verticalOverlap > Math.min(playerHeight, targetHeight) * 0.28 &&
+        horizontalOverlap > 0 &&
+        horizontalOverlap < verticalOverlap * 0.9;
+      if (!sideContact) return;
+
+      const velocityDirection =
+        Math.abs(playerBody.velocity.x) > 0.2
+          ? Math.sign(playerBody.velocity.x)
+          : 0;
+      const direction =
+        velocityDirection ||
+        (target.position.x >= playerBody.position.x ? 1 : -1);
+      const speedRatio = Math.min(
+        1,
+        Math.abs(playerBody.velocity.x) / PLAYER_RUN_SPEED,
+      );
+      const runBoost = inputRun || speedRatio > 0.75;
+      const force = (runBoost ? RUN_PUSH_FORCE : WALK_PUSH_FORCE) * target.mass;
+
+      Body.applyForce(target, target.position, {
+        x: direction * force,
+        y: -force * 0.12,
+      });
+      Body.setAngularVelocity(
+        target,
+        target.angularVelocity + direction * (runBoost ? 0.08 : 0.035),
+      );
+    };
+
     const handleRingPickup = (pair: Matter.Pair) => {
       if (!playerBody) return;
       const bodies = [pair.bodyA, pair.bodyB];
@@ -942,6 +998,7 @@ export default function HeroGame() {
         addSupportContact(pair, now);
         handleBillboardImpact(pair, now, playerVelocityY);
         handleRingPickup(pair);
+        handleFallenObjectSidePush(pair);
         handleObjectImpact(pair.bodyA, pair.bodyB, now, playerVelocityY);
         handleObjectImpact(pair.bodyB, pair.bodyA, now, playerVelocityY);
       }
@@ -1307,14 +1364,22 @@ export default function HeroGame() {
         baseline + groundThickness / 2,
         width * 2,
         groundThickness,
-        { isStatic: true, friction: PLAYER_FRICTION },
+        {
+          isStatic: true,
+          friction: SURFACE_FRICTION,
+          frictionStatic: SURFACE_FRICTION_STATIC,
+        },
       );
       roadGround = Bodies.rectangle(
         width / 2,
         baseline + roadDrop + groundThickness / 2,
         width * 2,
         groundThickness,
-        { isStatic: true, friction: PLAYER_FRICTION },
+        {
+          isStatic: true,
+          friction: SURFACE_FRICTION,
+          frictionStatic: SURFACE_FRICTION_STATIC,
+        },
       );
       const leftWall = Bodies.rectangle(
         -wallThickness / 2,
@@ -1335,7 +1400,11 @@ export default function HeroGame() {
         billboard.brickTop + brickLedgeThickness / 2,
         billboard.brickWidth,
         brickLedgeThickness,
-        { isStatic: true, friction: PLAYER_FRICTION },
+        {
+          isStatic: true,
+          friction: SURFACE_FRICTION,
+          frictionStatic: SURFACE_FRICTION_STATIC,
+        },
       );
       const heroLayout = computeHeroLayout(ctx);
       const elevatedLedgeHeight = Math.max(5, cell * 0.8);
@@ -1348,14 +1417,22 @@ export default function HeroGame() {
           elevatedLedgeHeight / 2,
         cell * 13,
         elevatedLedgeHeight,
-        { isStatic: true, friction: PLAYER_FRICTION },
+        {
+          isStatic: true,
+          friction: SURFACE_FRICTION,
+          frictionStatic: SURFACE_FRICTION_STATIC,
+        },
       );
       billboardTop = Bodies.rectangle(
         billboard.bbX + billboard.bbWidth / 2,
         billboard.bbY - billboard.frameWidth / 2,
         billboard.bbWidth + billboard.frameWidth * 2,
         Math.max(5, billboard.frameWidth),
-        { isStatic: true, friction: PLAYER_FRICTION },
+        {
+          isStatic: true,
+          friction: SURFACE_FRICTION,
+          frictionStatic: SURFACE_FRICTION_STATIC,
+        },
       );
       billboardHitbox = Bodies.rectangle(
         billboard.bbX + billboard.bbWidth / 2,
@@ -1394,7 +1471,7 @@ export default function HeroGame() {
         baseline - playerHeight / 2 - cell * SPAWN_DROP_CELLS,
         playerWidth,
         playerHeight,
-        { friction: PLAYER_FRICTION },
+        { friction: PLAYER_FRICTION, frictionStatic: PLAYER_FRICTION_STATIC },
       );
       Body.setInertia(playerBody, Infinity);
 
@@ -1757,6 +1834,15 @@ export default function HeroGame() {
       canvas.style.cursor = state === 'passive' ? 'pointer' : '';
     };
 
+    const onHeroTimeChange = (event: Event) => {
+      const next = (event as CustomEvent<{ heroTime?: string }>).detail
+        ?.heroTime;
+      daytime = next === 'day';
+      palette = getPalette(daytime);
+      document.documentElement.dataset.heroTime = daytime ? 'day' : 'night';
+      if (state === 'passive') drawPassiveFrame();
+    };
+
     const resize = () => {
       const rect = canvas.getBoundingClientRect();
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -1777,9 +1863,13 @@ export default function HeroGame() {
 
     resize();
     window.addEventListener('resize', resize);
+    window.addEventListener('hero-time-change', onHeroTimeChange);
 
     if (prefersReducedMotion) {
-      return () => window.removeEventListener('resize', resize);
+      return () => {
+        window.removeEventListener('resize', resize);
+        window.removeEventListener('hero-time-change', onHeroTimeChange);
+      };
     }
 
     canvas.addEventListener('click', onCanvasClick);
@@ -1837,6 +1927,7 @@ export default function HeroGame() {
       stop();
       observer.disconnect();
       window.removeEventListener('resize', resize);
+      window.removeEventListener('hero-time-change', onHeroTimeChange);
       canvas.removeEventListener('click', onCanvasClick);
       canvas.removeEventListener('pointermove', onCanvasPointerMove);
       deactivate();

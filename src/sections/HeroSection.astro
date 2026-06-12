@@ -190,7 +190,12 @@ const isDev = import.meta.env.DEV;
         document.documentElement.dataset.heroTime === 'day' ? 'night' : 'day';
       const url = new URL(window.location.href);
       url.searchParams.set('heroTime', next);
-      window.location.href = url.toString();
+      window.history.replaceState({}, '', url.toString());
+      document.documentElement.dataset.heroTime = next;
+      btn.textContent = next === 'day' ? '☀ DAY' : '☽ NIGHT';
+      window.dispatchEvent(
+        new CustomEvent('hero-time-change', { detail: { heroTime: next } }),
+      );
     });
   }
 </script>

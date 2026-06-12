@@ -17,7 +17,16 @@ export const PLAYER_JUMP_VELOCITY = 10.8;
 export const PLAYER_DOUBLE_JUMP_VELOCITY = 12.4;
 export const PLAYER_SLAM_VELOCITY = 18;
 export const SLAM_IMPACT_MIN_VELOCITY = 10;
-export const PLAYER_FRICTION = 0.8;
+/** Low player friction keeps airborne side contacts from turning into sticky wall slides. */
+export const PLAYER_FRICTION = 0.05;
+export const PLAYER_FRICTION_STATIC = 0.02;
+/** Platforms and settled debris can stay grippy without making the player cling to walls. */
+export const SURFACE_FRICTION = 0.8;
+export const SURFACE_FRICTION_STATIC = 0.5;
+export const OBJECT_FRICTION = 0.55;
+export const OBJECT_FRICTION_STATIC = 0.35;
+export const WALK_PUSH_FORCE = 0.006;
+export const RUN_PUSH_FORCE = 0.018;
 export const LANDING_SQUASH_MS = 80;
 export const SPAWN_DROP_CELLS = 8;
 /** Player spawns near the left edge of the canvas, not dead-center. */
