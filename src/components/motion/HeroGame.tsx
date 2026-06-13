@@ -131,6 +131,8 @@ export default function HeroGame() {
   const prefersReducedMotion = usePrefersReducedMotion();
 
   useEffect(() => {
+    if (prefersReducedMotion) return;
+
     const img = new Image();
     img.onload = () => {
       itemSheetRef.current = img;
@@ -144,7 +146,7 @@ export default function HeroGame() {
       .catch(() => {
         // sprite stays null — canvas renders without character
       });
-  }, []);
+  }, [prefersReducedMotion]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -503,6 +505,7 @@ export default function HeroGame() {
     const triggerBillboardStun = (now: number) => {
       billboardScreenBroken = false;
       billboardStunnedUntil = now + BILLBOARD_STUN_MS;
+      // Physics is paused while help is open, so this direct reset is only a defensive invariant.
       billboardHelpOpen = false;
       helpOpenedAt = 0;
       billboardScrambleUntil = 0;
