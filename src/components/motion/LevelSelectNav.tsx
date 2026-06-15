@@ -10,8 +10,8 @@ export interface LevelSelectNavProps {
 }
 
 /**
- * "Level select" nav with scroll-tracked active-section highlighting
- * (deferred from the static pass — PRD §6/§8/§12). Renders the same
+ * "Level select" nav with scroll-tracked active-section highlighting.
+ * Renders the same
  * `nav-link` markup server-side so it works with no JS, then layers in an
  * `IntersectionObserver` to mark whichever section is crossing the viewport's
  * "now playing" band as `aria-current`.

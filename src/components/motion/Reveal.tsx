@@ -23,7 +23,7 @@ const staticVariants: Variants = {
 
 /**
  * Restrained scroll-reveal wrapper — fades/slides content into place once,
- * the first time it scrolls into view ("level intro" cards, PRD §9). Renders
+ * the first time it scrolls into view ("level intro" cards). Renders
  * a single static frame with no transform/opacity animation under
  * `prefers-reduced-motion`, so content stays immediately readable.
  */

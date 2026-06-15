@@ -815,10 +815,10 @@ export default function HeroGame() {
         .every((obj) => obj.state === 'fallen');
 
     /**
-     * PRD "crumble every button, badge, wordmark letter, and tagline chunk
-     * off the screen, triggering a celebratory finale": each object counts
-     * as cleared the moment it lands in `fallen` (settled debris), so the
-     * finale fires as soon as the last of the 18 required objects crumbles.
+     * Finale condition: crumble every button, badge, wordmark letter, and
+     * tagline chunk off the screen. Each object counts as cleared the moment
+     * it lands in `fallen` (settled debris), so the finale fires as soon as
+     * the last of the 18 required objects crumbles.
      */
     const checkFinale = (now: number) => {
       if (finaleTriggered) return;
@@ -1941,9 +1941,8 @@ export default function HeroGame() {
     };
 
     /**
-     * `R` (PRD "Resolved Design Decisions → Sprite Randomization"): rebuilds
-     * the world with a freshly randomized sprite, undoing crumble/pickup/
-     * billboard/finale progress without exiting the game.
+     * `R`: rebuilds the world with a freshly randomized sprite, undoing
+     * crumble/pickup/billboard/finale progress without exiting the game.
      */
     const resetGame = () => {
       if (state !== 'active') return;

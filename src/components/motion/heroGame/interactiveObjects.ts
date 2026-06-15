@@ -24,7 +24,7 @@ export type ObjectVariant =
   | 'tagline';
 
 /**
- * `pinned` → `fallen` per PRD "Interactive Objects → 1, 2".
+ * `pinned` → `fallen` is the lifecycle for most objects.
  * `fallen` covers both the falling and settled-"obstacle" states — both are
  * the same dynamic body, just at different points in its physics journey.
  *
@@ -199,8 +199,8 @@ function drawFacebookIcon(
 
 /**
  * Lays out the badge row and CTA button row in a left-aligned column,
- * mirroring `.hero__badges` / `.hero__actions` from the passive layout (see
- * PRD "Game World Layout" — badges at `y ≈ cell*6`, buttons at `y ≈ cell*10`).
+ * mirroring `.hero__badges` / `.hero__actions` from the passive layout
+ * (badges at `y ≈ cell*6`, buttons at `y ≈ cell*10`).
  * Sizes are measured from the same pixel font the objects are drawn with, so
  * physics bodies match their visuals exactly.
  */

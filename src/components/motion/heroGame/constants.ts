@@ -49,7 +49,7 @@ export const FEEDBACK_MS = 1450;
 
 // --- Hero mini-game tuning (Phase 2: interactive objects) --------------
 
-/** Bounce for buttons/badges/letters once they fall — "moderate" per PRD. */
+/** Moderate bounce for buttons/badges/letters once they fall. */
 export const OBJECT_RESTITUTION = 0.3;
 /** How long the "damaged" shake/crack animation plays after a hit. */
 export const DAMAGE_SHAKE_MS = 300;
@@ -63,7 +63,7 @@ export const BUMP_HIT_COOLDOWN_MS = 180;
 export const CLOUD_REPAIR_MS = 750;
 /** Small spin imparted to objects when they start falling, so stacks tumble unevenly. */
 export const FALL_ANGULAR_VELOCITY = 0.15;
-/** Buttons are heavier than badges, per PRD "Difficulty Tuning" — both relative to player mass. */
+/** Buttons are heavier than badges — both relative to player mass. */
 export const BUTTON_MASS_MULTIPLIER = 4;
 export const BADGE_MASS_MULTIPLIER = 1;
 

@@ -10,8 +10,8 @@ export interface CopyButtonProps {
 const RESET_DELAY_MS = 2000;
 
 /**
- * Small "copy to clipboard" affordance for the contact email (PRD §7
- * follow/contact). Swaps its label/icon to a confirmation for a couple of
+ * Small "copy to clipboard" affordance for the contact email. Swaps its
+ * label/icon to a confirmation for a couple of
  * seconds and announces the change to assistive tech via `aria-live`, since
  * the visual swap alone wouldn't reach screen-reader users.
  */
